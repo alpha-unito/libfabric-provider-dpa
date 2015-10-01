@@ -1,0 +1,25 @@
+Version @VERSION@
+Released on @DATE@
+
+Introduction
+============
+This program is a libfabric provider for A3Cube's ronniee fabric interface.
+
+
+Libfabric is a communication library that exports interfaces for
+fabric services to applications.  Libfabric is the core component
+of the Open Fabrics Interfaces (OFI) framework.
+
+The goal of OFI and libfabric is to define interfaces that enable
+a tight semantic map between applications and underlying fabric
+services.  Specifically, libfabric software interfaces have been
+co-designed with fabric hardware providers and application developers,
+with an initial focus on the needs of HPC users.  OFI supports multiple
+interface semantics, is fabric and hardware implementation agnostic,
+and leverages and expands the existing RDMA open source community. 
+
+For more information regarding the OFI project, please visit the OFIWG
+GitHub site:
+
+http://ofiwg.github.io/libfabric/
+

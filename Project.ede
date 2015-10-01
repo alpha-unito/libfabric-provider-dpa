@@ -1,0 +1,7 @@
+;; Object libfabric_prov_ronniee
+;; EDE Project Files are auto generated: Do Not Edit
+(ede-proj-project "libfabric_prov_ronniee"
+  :file "Project.ede"
+  :name "libfabric_prov_ronniee"
+  :targets nil
+  :makefile-type 'Makefile.am)
