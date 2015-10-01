@@ -1,9 +1,10 @@
-Version @VERSION@
-Released on @DATE@
+Version 1.0
+Released on 2015-10-01
 
 Introduction
 ============
-This program is a libfabric provider for A3Cube's ronniee fabric interface.
+This program is a libfabric provider for A3Cube's Ronniee Express 
+(http://a3cube-inc.com/ronniee-express.html) fabric interface.
 
 
 Libfabric is a communication library that exports interfaces for
@@ -18,8 +19,23 @@ with an initial focus on the needs of HPC users.  OFI supports multiple
 interface semantics, is fabric and hardware implementation agnostic,
 and leverages and expands the existing RDMA open source community. 
 
-For more information regarding the OFI project, please visit the OFIWG
-GitHub site:
+For more information regarding the OFI project, please visit the OFIWG website:
 
 http://ofiwg.github.io/libfabric/
 
+This work is a part of Paolo Inaudi's MSc thesis at Computer Science
+Department of University of Torino, under the supervision of Prof.
+Marco Aldinucci. This is work has been made possible thanks to
+the Memorandum of Understanding (2014) between University of Torino and 
+A3CUBE Inc. that established a joint research lab at
+Computer Science Department of University of Torino, Italy.
+
+Parallel Computing research group website: http://alpha.di.unito.it/
+
+Author: Paolo Inaudi <p91paul@gmail.com>  
+      
+Contributors: 
+
+   Emilio Billi (A3Cube Inc. CSO): hardware and DPAlib support
+   Paola Pisano (UniTO-A3Cube CEO): testing environment
+   Marco Aldinucci (UniTO-A3Cube CSO): code design supervision 
