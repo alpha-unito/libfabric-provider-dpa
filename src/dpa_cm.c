@@ -147,7 +147,7 @@ static inline void connection_request(dpa_fid_pep* pep, dpa_nodeid_t nodeId) {
 int progress_eq(dpa_fid_pep *pep, int timeout_millis) {
   dpa_nodeid_t nodeId; dpa_adapterno_t adapterNo; dpa_error_t error;
   DPA_DEBUG("Awaiting connection on segment %d\n", pep->control_info.segmentId);
-  timeout_millis = timeout_millis > 0 ? timeout_millis : DPA_INFINITE_TIMEOUT;
+  timeout_millis = timeout_millis >= 0 ? timeout_millis : DPA_INFINITE_TIMEOUT;
   while(DPA_CB_CONNECT != DPAWaitForLocalSegmentEvent(pep->control_info.segment,
                                                       &nodeId, &adapterNo,
                                                       timeout_millis,
