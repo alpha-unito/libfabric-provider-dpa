@@ -158,18 +158,23 @@ static ssize_t dpa_eq_sread(struct fid_eq *eq, uint32_t *event,
   ssize_t result = 0;
   do {
     if (eq_priv->progress) {
-      DPA_DEBUG("Enforcing event queue progress\n");
-      timeout = eq_priv->progress(eq_priv->progress_arg, timeout);
+      //try first progress
+      timeout = eq_priv->progress(eq_priv->progress_arg, 0);
     }
     if (!slist_empty(&eq_priv->error_queue)) {
       DPA_DEBUG("Error queue not empty\n");
       return -FI_EAVAIL;
     }
     result = eq_read_priv(eq_priv, &eq_priv->event_queue, buf, len, event, flags);
-    if (result == -FI_EAGAIN && !eq_priv->progress && timeout) {
-      LIST_SAFE(&eq_priv->event_queue, ({
-            fastlock_wait_timeout(&eq_priv->cond, &eq_priv->event_queue.lock, timeout);
-          }));
+    if (result == -FI_EAGAIN) {
+      if (eq_priv->progress) {
+        DPA_DEBUG("Enforcing event queue progress\n");
+        timeout = eq_priv->progress(eq_priv->progress_arg, timeout);
+      } else if(timeout) {
+        LIST_SAFE(&eq_priv->event_queue, ({
+              fastlock_wait_timeout(&eq_priv->cond, &eq_priv->event_queue.lock, timeout);
+            }));
+      }
     }
   } while(timeout > 0);
   return result;

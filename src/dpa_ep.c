@@ -256,6 +256,9 @@ static int dpa_pep_close(fid_t fid) {
   DPA_DEBUG("Closing endpoint\n");
   struct dpa_fid_pep *pep = container_of(fid, dpa_fid_pep, pep.fid);
   fastlock_destroy(&pep->lock);
+  pep->eq->progress = NULL;
+  pep->eq->progress_arg = NULL;
+  dpa_destroy_segment(pep->control_info);
   fi_freeinfo(pep->info);
   free(pep);
   return 0;
