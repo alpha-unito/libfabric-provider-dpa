@@ -58,7 +58,6 @@ struct dpa_fid_pep {
   dpa_fid_eq* eq;
   dpa_fid_mr* mr;
   local_segment_info control_info;
-  size_t control_index;
   fastlock_t lock;
 };
 

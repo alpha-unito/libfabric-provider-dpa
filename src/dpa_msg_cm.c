@@ -53,9 +53,12 @@ DEFINE_ENV_CONST(size_t, BUFFERS_PER_SEGMENT, BUFFERS_PER_SEGMENT_DEFAULT);
 DEFINE_ENV_CONST(dpa_segmid_t, MIN_MSG_SEGMID, MIN_MSG_SEGMID_DEFAULT);
 DEFINE_ENV_CONST(dpa_segmid_t, MAX_MSG_SEGMID, MAX_MSG_SEGMID_DEFAULT);
 
+#ifndef MAX_CONCUR_CONN_DEFAULT
+#define MAX_CONCUR_CONN_DEFAULT 32
+#endif
+DEFINE_ENV_CONST(size_t, MAX_CONCUR_CONN, MAX_CONCUR_CONN_DEFAULT);
+
 #define NUM_SEGMENTS (MAX_MSG_SEGMID - MIN_MSG_SEGMID)
-#define MAX_PEERS (NUM_SEGMENTS * BUFFERS_PER_SEGMENT)
-#define CONTROL_SEGMENT_SIZE (MAX_PEERS*sizeof(struct control_data))
 #define DATA_SEGMENT_SIZE (BUFFER_SIZE * BUFFERS_PER_SEGMENT)
 
 struct assign_data assign_data;
@@ -116,6 +119,9 @@ static inline local_buffer_info* get_empty_buffer(){
 }
 
 static inline volatile dpa_error_t alloc_msg_buffer(dpa_fid_ep* ep, volatile segment_data* local_segment_data) {
+  //msg buffer relevant for msg capable endpoints
+  if (!(ep->caps & (FI_RECV | FI_SEND))) return FI_SUCCESS;
+
   dpa_error_t error, nocheck;
   local_buffer_info* empty_buffer = get_empty_buffer();
   if (empty_buffer == NULL) {
@@ -123,30 +129,35 @@ static inline volatile dpa_error_t alloc_msg_buffer(dpa_fid_ep* ep, volatile seg
     error = DPA_ERR_SYSTEM;
     goto alloc_fail;
   }
-  DPA_DEBUG("Opening recv virtual device\n");
-  DPAOpen(&ep->msg_recv_info.sd, NO_FLAGS, &error);
-  DPALIB_CHECK_ERROR(DPAOpen, goto alloc_fail);
 
   unsigned int interrupt_flags = ep->domain->data_progress == FI_PROGRESS_AUTO
     ? DPA_FLAG_USE_CALLBACK
-    : NO_FLAGS;  
-  DPA_DEBUG("Creating recv interrupt\n");
-  DPACreateInterrupt(ep->msg_recv_info.sd,
-                     &ep->msg_recv_info.interrupt, localAdapterNo,
-                     (dpa_intid_t*)&(local_segment_data->recvInterruptId),
-                     process_recv_queue_interrupt_callback,
-                     ep, interrupt_flags, &error);
-  DPALIB_CHECK_ERROR(DPACreateInterrupt, goto alloc_recvclose);
-  DPA_DEBUG("Opening send virtual device\n");
-  DPAOpen(&ep->msg_send_info.sd, NO_FLAGS, &error);
-  DPALIB_CHECK_ERROR(DPAOpen, goto alloc_remrecvint);
-  DPA_DEBUG("Creating send interrupt\n");
-  DPACreateInterrupt(ep->msg_send_info.sd,
-                     &ep->msg_send_info.interrupt, localAdapterNo,
-                     (dpa_intid_t*)&(local_segment_data->sendInterruptId),
-                     process_send_queue_interrupt_callback,
-                     ep, interrupt_flags, &error);
-  DPALIB_CHECK_ERROR(DPACreateInterrupt, goto alloc_sendclose);
+    : NO_FLAGS;
+  if (ep->caps & FI_RECV) {
+    DPA_DEBUG("Opening recv virtual device\n");
+    DPAOpen(&ep->msg_recv_info.sd, NO_FLAGS, &error);
+    DPALIB_CHECK_ERROR(DPAOpen, goto alloc_fail);
+  
+    DPA_DEBUG("Creating recv interrupt\n");
+    DPACreateInterrupt(ep->msg_recv_info.sd,
+                       &ep->msg_recv_info.interrupt, localAdapterNo,
+                       (dpa_intid_t*)&(local_segment_data->recvInterruptId),
+                       process_recv_queue_interrupt_callback,
+                       ep, interrupt_flags, &error);
+    DPALIB_CHECK_ERROR(DPACreateInterrupt, goto alloc_recvclose);
+  }
+  if (ep->caps & FI_SEND) {
+    DPA_DEBUG("Opening send virtual device\n");
+    DPAOpen(&ep->msg_send_info.sd, NO_FLAGS, &error);
+    DPALIB_CHECK_ERROR(DPAOpen, goto alloc_remrecvint);
+    DPA_DEBUG("Creating send interrupt\n");
+    DPACreateInterrupt(ep->msg_send_info.sd,
+                       &ep->msg_send_info.interrupt, localAdapterNo,
+                       (dpa_intid_t*)&(local_segment_data->sendInterruptId),
+                       process_send_queue_interrupt_callback,
+                       ep, interrupt_flags, &error);
+    DPALIB_CHECK_ERROR(DPACreateInterrupt, goto alloc_sendclose);
+  }
   //reserve buffer
   empty_buffer->size = BUFFER_SIZE;
   //clean buffer before making available
@@ -174,35 +185,44 @@ static inline volatile dpa_error_t alloc_msg_buffer(dpa_fid_ep* ep, volatile seg
   DPA_DEBUG("Node %d failed to connect\n",  ep->peer_addr.nodeId);
   return error;
 }
+
+static inline volatile control_data* get_empty_control_data(volatile control_data* arr, size_t count) {
+  while(true) {
+    for (int i = 0; i < count; i++)
+      if (arr[i].status == INVALID)
+        return &arr[i];
+  }
+}
+
 volatile control_data* write_msg_accept_data(dpa_fid_ep* ep) {
-  volatile control_data* result;
+  volatile control_data* result = NULL;
   THREADSAFE(&ep->pep->lock, ({
         volatile control_data* ctrlseg = (volatile control_data*) ep->pep->control_info.base;
-        result = &ctrlseg[ep->pep->control_index];
+        result = get_empty_control_data(ctrlseg, MAX_CONCUR_CONN);
         volatile segment_data* local_segment_data = &result->local_segment_data;
-        dpa_error_t error = alloc_msg_buffer(ep, local_segment_data);
+        dpa_sequence_t sequence; dpa_error_t error;
+        DPACreateMapSequence(ep->pep->control_info.map, &sequence, NO_FLAGS, &error);
+        DPALIB_CHECK_ERROR(DPACreateMapSequence, );
+        if (error == DPA_ERR_OK)
+          error = alloc_msg_buffer(ep, local_segment_data);
         if (error == DPA_ERR_OK) {
-          /* node MUST be set AFTER all other metadata, 
-           * so that when remote node reads this it can be
-           * sure everything else is already there.
-           * volatile ensures ordering is honored by the compiler;
-           * might need a memory fence to ensure also memory ordering */
           result->nodeId = ep->peer_addr.nodeId;
-          print_control_data(&ctrlseg[ep->pep->control_index]);
-          ep->pep->control_index++;
+          DPAFlush(sequence, NO_FLAGS);
+          /* status MUST be set AFTER all other metadata, 
+           * so that when remote node reads this it can be
+           * sure everything else is already there.*/
+          result->status = CTRLSTATUS_VALID;
+          print_control_data(result);
         }
         else result = NULL;
+        if (sequence) DPARemoveSequence(sequence, NO_FLAGS, &error);
       }));
   return result;
 }
   
 
 void remove_msg_accept_data(dpa_fid_ep* ep, volatile control_data* data){
-  THREADSAFE(&ep->pep->lock, ({
-        volatile control_data* ctrlseg = (volatile control_data*) ep->pep->control_info.base;
-        *data = ctrlseg[ep->pep->control_index];
-        ep->pep->control_index--;
-      }));
+  memset(data, 0, sizeof(control_data));
 }
 
 dpa_error_t accept_msg(dpa_fid_ep* ep) { 
@@ -217,6 +237,15 @@ dpa_error_t accept_msg(dpa_fid_ep* ep) {
   dpa_error_t error = connect_msg(ep, control_data->remote_segment_data);
   remove_msg_accept_data(ep, control_data);
   return error == DPA_ERR_OK ? FI_SUCCESS : -FI_ECONNABORTED;
+}
+
+static inline volatile control_data* get_conn_data(control_data arr[], size_t count) {
+  while (true) {
+    for (int i = 0; i < count; i++) {
+      if (arr[i].nodeId == localNodeId && arr[i].status == CTRLSTATUS_VALID)
+        return &arr[i];
+    }
+  }
 }
 
 dpa_error_t ctrl_connect_msg(dpa_fid_ep* ep, volatile segment_data* remote_segment_data) {
@@ -234,26 +263,27 @@ dpa_error_t ctrl_connect_msg(dpa_fid_ep* ep, volatile segment_data* remote_segme
                       ep->peer_addr.segmentId, localAdapterNo, NO_CALLBACK,
                       NULL, DPA_INFINITE_TIMEOUT, NO_FLAGS, &error);
   } while (error != DPA_ERR_OK);
+
+  size_t ctrl_seg_size = DPAGetRemoteSegmentSize(remoteControlSegment);
   
   DPA_DEBUG("Mapping remote control segment\n");
   dpa_map_t remoteControlMap;
   volatile control_data* remote_ctrl_segment = DPAMapRemoteSegment(remoteControlSegment,
                                                                    &remoteControlMap,
-                                                                   0, CONTROL_SEGMENT_SIZE,
+                                                                   0, ctrl_seg_size,
                                                                    NULL, NO_FLAGS, &error);
   DPALIB_CHECK_ERROR(DPAMapRemoteSegment, goto ctrl_disconnect);
   DPA_DEBUG("Looking for current node segment data on remote\n");
-  int i = 0;
-  while (remote_ctrl_segment[i].nodeId != localNodeId) {
-    print_control_data(&remote_ctrl_segment[i]);
-    if (remote_ctrl_segment[i].local_segment_data.size > 0) i++;
-    else i = 0;
-  }
-  print_control_data(&remote_ctrl_segment[i]);
+  size_t count = ctrl_seg_size / sizeof(control_data);
+  volatile control_data* control_data = get_conn_data(remote_ctrl_segment, count);
+  //this should be done atomically with a test&set operation, when hardware will support.
+  control_data->status = CTRLSTATUS_TAKEN;
+  
   DPA_DEBUG("Fetching remote segment data for current node\n");
-  *remote_segment_data = remote_ctrl_segment[i].local_segment_data;
-  error = alloc_msg_buffer(ep, &remote_ctrl_segment[i].remote_segment_data);
-  print_control_data(&remote_ctrl_segment[i]);
+  *remote_segment_data = control_data->local_segment_data;
+  error = alloc_msg_buffer(ep, &control_data->remote_segment_data);
+  control_data->status = CTRLSTATUS_REPLIED;
+  print_control_data(remote_segment_data);
  ctrl_unmap:
   DPAUnmapSegment(remoteControlMap, NO_FLAGS, &nocheck);
  ctrl_disconnect:
@@ -266,41 +296,49 @@ dpa_error_t ctrl_connect_msg(dpa_fid_ep* ep, volatile segment_data* remote_segme
 
 dpa_error_t connect_msg(dpa_fid_ep* ep, segment_data remote_segment_data) {
   dpa_error_t error;
-  DPA_DEBUG("Connecting to remote recv segment %u on node %u\n", 
-            remote_segment_data.segmentId, ep->peer_addr.nodeId);
-  DPAConnectSegment(ep->msg_send_info.sd, &ep->msg_send_info.remote_segment, ep->peer_addr.nodeId,
-                    remote_segment_data.segmentId, localAdapterNo, NO_CALLBACK,
-                    NULL, DPA_INFINITE_TIMEOUT, NO_FLAGS, &error);
-  DPALIB_CHECK_ERROR(DPAConnectSegment, goto conn_end);
-
-  DPA_DEBUG("Connecting to remote recv interrupt %u on node %u\n", 
-            remote_segment_data.recvInterruptId, ep->peer_addr.nodeId);
-  DPAConnectInterrupt(ep->msg_send_info.sd, &ep->msg_send_info.remote_interrupt,
-                      ep->peer_addr.nodeId, localAdapterNo, remote_segment_data.recvInterruptId,
-                      DPA_INFINITE_TIMEOUT, NO_FLAGS, &error);
-  DPALIB_CHECK_ERROR(DPAConnectInterrupt, goto conn_end);
-
-  DPA_DEBUG("Connecting to remote send interrupt %u on node %u\n", 
-            remote_segment_data.sendInterruptId, ep->peer_addr.nodeId);
-  DPAConnectInterrupt(ep->msg_recv_info.sd, &ep->msg_recv_info.remote_interrupt,
-                      ep->peer_addr.nodeId, localAdapterNo, remote_segment_data.sendInterruptId,
-                      DPA_INFINITE_TIMEOUT, NO_FLAGS, &error);
-  DPALIB_CHECK_ERROR(DPAConnectInterrupt, goto conn_end);
-
-  DPA_DEBUG("Mapping remote segment %u on node %u\n", 
-            remote_segment_data.segmentId, ep->peer_addr.nodeId);
-  volatile buffer_status* remote_status = DPAMapRemoteSegment(ep->msg_send_info.remote_segment,
-                                                        &ep->msg_send_info.remoteMap,
-                                                        remote_segment_data.offset,
-                                                        remote_segment_data.size,
-                                                        NULL, NO_FLAGS, &error);
-  DPALIB_CHECK_ERROR(DPAMapRemoteSegment, goto conn_end);
+  if (ep->caps & (FI_RECV | FI_SEND)) {
+    DPA_DEBUG("Connecting to remote recv segment %u on node %u\n", 
+              remote_segment_data.segmentId, ep->peer_addr.nodeId);
+    DPAConnectSegment(ep->msg_send_info.sd, &ep->msg_send_info.remote_segment, ep->peer_addr.nodeId,
+                      remote_segment_data.segmentId, localAdapterNo, NO_CALLBACK,
+                      NULL, DPA_INFINITE_TIMEOUT, NO_FLAGS, &error);
+    DPALIB_CHECK_ERROR(DPAConnectSegment, goto conn_end);
   
-  DPA_DEBUG("Saving remote segment data\n");
-  ep->msg_send_info.write = 0;
-  ep->msg_send_info.size = remote_segment_data.size - offsetof(buffer_status, data);
-  ep->msg_send_info.remote_buffer = remote_status->data;
-  ep->msg_recv_info.remote_status = remote_status;
+    DPA_DEBUG("Mapping remote segment %u on node %u\n", 
+              remote_segment_data.segmentId, ep->peer_addr.nodeId);
+    volatile buffer_status* remote_status = DPAMapRemoteSegment(ep->msg_send_info.remote_segment,
+                                                                &ep->msg_send_info.remoteMap,
+                                                                remote_segment_data.offset,
+                                                                remote_segment_data.size,
+                                                                NULL, NO_FLAGS, &error);
+    DPALIB_CHECK_ERROR(DPAMapRemoteSegment, goto conn_end);
+  
+    DPA_DEBUG("Saving remote segment data\n");
+    ep->msg_send_info.write = 0;
+    ep->msg_send_info.size = remote_segment_data.size - offsetof(buffer_status, data);
+    ep->msg_send_info.remote_buffer = remote_status->data;
+    ep->msg_recv_info.remote_status = remote_status;
+  }
+  
+  if (ep->caps & FI_SEND) {
+    DPA_DEBUG("Connecting to remote recv interrupt %u on node %u\n", 
+              remote_segment_data.recvInterruptId, ep->peer_addr.nodeId);
+    DPAConnectInterrupt(ep->msg_send_info.sd,
+                        &ep->msg_send_info.remote_interrupt,
+                        ep->peer_addr.nodeId, localAdapterNo,
+                        remote_segment_data.recvInterruptId,
+                        DPA_INFINITE_TIMEOUT, NO_FLAGS, &error);
+    DPALIB_CHECK_ERROR(DPAConnectInterrupt, goto conn_end);
+  }
+
+  if (ep->caps & FI_RECV) {
+    DPA_DEBUG("Connecting to remote send interrupt %u on node %u\n", 
+              remote_segment_data.sendInterruptId, ep->peer_addr.nodeId);
+    DPAConnectInterrupt(ep->msg_recv_info.sd, &ep->msg_recv_info.remote_interrupt,
+                        ep->peer_addr.nodeId, localAdapterNo, remote_segment_data.sendInterruptId,
+                        DPA_INFINITE_TIMEOUT, NO_FLAGS, &error);
+    DPALIB_CHECK_ERROR(DPAConnectInterrupt, goto conn_end);
+  }
 
   DPA_DEBUG("Adding CONNECTED event to event queue\n");
   struct fi_eq_cm_entry event = {

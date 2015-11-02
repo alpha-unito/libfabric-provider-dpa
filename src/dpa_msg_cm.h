@@ -57,7 +57,15 @@ struct segment_data {
   dpa_intid_t sendInterruptId;
 };
 
+enum control_data_status {
+  CTRLSTATUS_INVALID,
+  CTRLSTATUS_VALID,
+  CTRLSTATUS_TAKEN,
+  CTRLSTATUS_REPLIED
+};
+
 struct control_data {
+  enum control_data_status status; 
   dpa_nodeid_t nodeId;
   segment_data local_segment_data;
   segment_data remote_segment_data;

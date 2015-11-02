@@ -42,10 +42,9 @@ EXTERN_ENV_CONST(dpa_segmid_t, MAX_MSG_SEGMID);
 EXTERN_ENV_CONST(dpa_segmid_t, MIN_MSG_SEGMID);
 EXTERN_ENV_CONST(size_t, BUFFERS_PER_SEGMENT);
 EXTERN_ENV_CONST(size_t, BUFFER_SIZE);
+EXTERN_ENV_CONST(size_t, MAX_CONCUR_CONN);
 
-#define NUM_SEGMENTS (MAX_MSG_SEGMID - MIN_MSG_SEGMID)
-#define MAX_PEERS (NUM_SEGMENTS * BUFFERS_PER_SEGMENT)
-#define CONTROL_SEGMENT_SIZE (MAX_PEERS*sizeof(struct control_data))
+#define CONTROL_SEGMENT_SIZE (MAX_CONCUR_CONN * sizeof(struct control_data))
 
 extern struct assign_data assign_data;
 extern msg_local_segment_info* local_segments_info;
@@ -74,14 +73,12 @@ int dpa_listen(struct fid_pep *pep) {
 
 int dpa_accept(struct fid_ep *ep, const void *param, size_t paramlen) {
   dpa_fid_ep* ep_priv = container_of(ep, dpa_fid_ep, ep);
-  if (!(ep_priv->caps & FI_MSG)) return FI_SUCCESS;
-  else return accept_msg(ep_priv);
+  return accept_msg(ep_priv);
 }
 
 int dpa_connect(struct fid_ep *ep, const void *addr,
                 const void *param, size_t paramlen) {
   dpa_fid_ep* ep_priv = container_of(ep, dpa_fid_ep, ep);
-  if (!(ep_priv->caps & FI_MSG)) return FI_SUCCESS;
   DPA_DEBUG("Connecting to endpoint %d:%d\n", ep_priv->peer_addr.nodeId, ep_priv->peer_addr.segmentId);
   segment_data remote_segment_data;
   dpa_error_t error = ctrl_connect_msg(ep_priv, &remote_segment_data);
@@ -105,6 +102,7 @@ int dpa_cm_init(){
   ENV_OVERRIDE_INT(BUFFERS_PER_SEGMENT);
   ENV_OVERRIDE_INT(MIN_MSG_SEGMID);
   ENV_OVERRIDE_INT(MAX_MSG_SEGMID);
+  ENV_OVERRIDE_INT(MAX_CONCUR_CONN);
 
   fastlock_init(&assign_data.lock);
   THREADSAFE(&assign_data.lock, ({
