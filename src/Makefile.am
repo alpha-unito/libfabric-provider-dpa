@@ -39,8 +39,8 @@ libfabric_LTLIBRARIES=libdpa-fi.la
 
 libdpa_fi_la_SOURCES= \
 	dpa.h \
-	hash.h locks.h list.h enosys.h enosys.c \
-	dpa_utils.h fi_ext_dpa.h dpa_segments.h dpa_log.h dpa_env.h\
+	hash.h locks.h list.h enosys.h enosys.c array.h \
+	dpa_utils.h fi_ext_dpa.h dpa_segments.h dpa_log.h dpa_env.h \
 	dpa_fabric.c \
 	dpa_info.h dpa_info.c \
 	dpa_domain.h dpa_domain.c \

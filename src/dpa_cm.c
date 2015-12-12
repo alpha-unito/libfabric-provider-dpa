@@ -37,6 +37,7 @@
 #include "dpa_msg.h"
 #include "dpa_msg_cm.h"
 #include "dpa_env.h"
+#include "array.h"
 
 EXTERN_ENV_CONST(dpa_segmid_t, MAX_MSG_SEGMID);
 EXTERN_ENV_CONST(dpa_segmid_t, MIN_MSG_SEGMID);
@@ -107,14 +108,14 @@ int dpa_cm_init(){
   fastlock_init(&assign_data.lock);
   THREADSAFE(&assign_data.lock, ({
         assign_data.currentSegmentId = MIN_MSG_SEGMID;
-        local_segments_info = calloc(NUM_SEGMENTS, sizeof(msg_local_segment_info));
+        local_segments_info = array_create(1, msg_local_segment_info);
       }));
   return FI_SUCCESS;
 }
 
 int dpa_cm_fini() {
   //remove buffer infos for all peers
-  for (int i = 0; i<NUM_SEGMENTS; i++) {
+  for (int i = 0; i<array_count(local_segments_info); i++) {
     local_segment_info info = local_segments_info[i].segment_info;
     if (info.segmentId) {
       //destroy data segment
@@ -123,7 +124,7 @@ int dpa_cm_fini() {
     if (local_segments_info[i].buffers)
       free(local_segments_info[i].buffers);
   }
-  free(local_segments_info);
+  array_destroy(local_segments_info);
   fastlock_destroy(&assign_data.lock);
   return FI_SUCCESS;
 }

@@ -33,6 +33,7 @@
 #define LOG_SUBSYS FI_LOG_AV
 #include "dpa.h"
 #include "dpa_av.h"
+#include "array.h"
 
 static int dpa_av_close(fid_t fid);
 static int dpa_av_insert(struct fid_av *av, const void *addr, size_t count,
@@ -83,8 +84,7 @@ int dpa_av_open(struct fid_domain *domain, struct fi_av_attr *attr,
       .domain = container_of(domain, dpa_fid_domain, domain),
     });
   if (type == FI_AV_TABLE){
-    av_priv->table = calloc(count, sizeof(fi_addr_t));
-    av_priv->count = count;
+    av_priv->table = array_create(count, dpa_addr_t);
     av_priv->last = 0;
   }                                       
 
@@ -94,21 +94,16 @@ int dpa_av_open(struct fid_domain *domain, struct fi_av_attr *attr,
 }
 
 static int dpa_av_close(fid_t fid) {
-  free(container_of(fid, struct dpa_fid_av, av.fid));
+  dpa_fid_av* av = container_of(fid, struct dpa_fid_av, av.fid);
+  array_destroy(av->table);
+  free(av);
   return 0;
 }
 
 static int check_table_size(dpa_fid_av* av_priv, size_t count){
-  if (av_priv->last + count <= av_priv->count)
-    return 0;
-  
-  size_t newcount = (2 * av_priv->count + count);
-  dpa_addr_t* newtable = realloc(av_priv->table, newcount * sizeof(dpa_addr_t));
-  if (newtable == NULL) return -FI_ENOMEM;
-
+  dpa_addr_t* newtable = array_request_size(av_priv->table, av_priv->last + count);
+  if (!newtable) return -FI_ENOMEM;
   av_priv->table = newtable;
-  av_priv->count = newcount;
-  
   return 0;
 }
 

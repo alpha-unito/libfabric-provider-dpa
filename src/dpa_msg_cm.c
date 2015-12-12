@@ -187,9 +187,9 @@ static inline volatile dpa_error_t alloc_msg_buffer(dpa_fid_ep* ep, volatile seg
 }
 
 static inline volatile control_data* get_empty_control_data(volatile control_data* arr, size_t count) {
-  while(true) {
+  for(;;) {
     for (int i = 0; i < count; i++)
-      if (arr[i].status == INVALID)
+      if (arr[i].status == CTRLSTATUS_INVALID)
         return &arr[i];
   }
 }
@@ -222,7 +222,7 @@ volatile control_data* write_msg_accept_data(dpa_fid_ep* ep) {
   
 
 void remove_msg_accept_data(dpa_fid_ep* ep, volatile control_data* data){
-  memset(data, 0, sizeof(control_data));
+  memset((void*)data, 0, sizeof(control_data));
 }
 
 dpa_error_t accept_msg(dpa_fid_ep* ep) { 
@@ -239,8 +239,9 @@ dpa_error_t accept_msg(dpa_fid_ep* ep) {
   return error == DPA_ERR_OK ? FI_SUCCESS : -FI_ECONNABORTED;
 }
 
-static inline volatile control_data* get_conn_data(control_data arr[], size_t count) {
-  while (true) {
+static inline volatile control_data* get_conn_data(volatile control_data arr[],
+                                                   size_t count) {
+  for(;;) {
     for (int i = 0; i < count; i++) {
       if (arr[i].nodeId == localNodeId && arr[i].status == CTRLSTATUS_VALID)
         return &arr[i];
@@ -283,7 +284,7 @@ dpa_error_t ctrl_connect_msg(dpa_fid_ep* ep, volatile segment_data* remote_segme
   *remote_segment_data = control_data->local_segment_data;
   error = alloc_msg_buffer(ep, &control_data->remote_segment_data);
   control_data->status = CTRLSTATUS_REPLIED;
-  print_control_data(remote_segment_data);
+  print_control_data(control_data);
  ctrl_unmap:
   DPAUnmapSegment(remoteControlMap, NO_FLAGS, &nocheck);
  ctrl_disconnect:
