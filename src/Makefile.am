@@ -47,6 +47,7 @@ libdpa_fi_la_SOURCES= \
 	dpa_ep.h dpa_ep.c \
 	dpa_eq.h dpa_eq.c \
 	dpa_cq.h dpa_cq.c \
+	dpa_cntr.h dpa_cntr.c \
 	dpa_mr.h dpa_mr.c \
 	dpa_av.h dpa_av.c \
 	dpa_cm.h dpa_cm.c \

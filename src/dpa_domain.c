@@ -33,6 +33,7 @@
 #include "dpa.h"
 #include "dpa_ep.h"
 #include "dpa_domain.h"
+#include "dpa_cntr.h"
 
 static struct fi_ops dpa_fid_ops = {
   .size = sizeof(struct fi_ops),
@@ -47,6 +48,7 @@ static struct fi_ops_domain dpa_domain_ops = {
   .av_open = dpa_av_open,
   .cq_open = dpa_cq_open,
   .endpoint = dpa_ep_open,
+  .cntr_open = dpa_cntr_open
 };
 
 static struct fi_ops_mr dpa_mr_ops = {
