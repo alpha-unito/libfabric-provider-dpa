@@ -139,16 +139,16 @@ extern "C" {
 #endif
   } atomic_t;
 
-  static inline int atomic_inc(atomic_t *atomic)
+  static inline int atomic_inc(atomic_t *atomic, int value)
   {
 	ATOMIC_IS_INITIALIZED(atomic);
-	return atomic_fetch_add_explicit(&atomic->val, 1, memory_order_acq_rel) + 1;
+	return atomic_fetch_add_explicit(&atomic->val, value, memory_order_acq_rel) + 1;
   }
 
-  static inline int atomic_dec(atomic_t *atomic)
+  static inline int atomic_dec(atomic_t *atomic, int value)
   {
 	ATOMIC_IS_INITIALIZED(atomic);
-	return atomic_fetch_sub_explicit(&atomic->val, 1, memory_order_acq_rel) - 1;
+	return atomic_fetch_sub_explicit(&atomic->val, value, memory_order_acq_rel) - 1;
   }
 
   static inline int atomic_set(atomic_t *atomic, int value)
@@ -183,24 +183,24 @@ extern "C" {
 #endif
   } atomic_t;
 
-  static inline int atomic_inc(atomic_t *atomic)
+  static inline int atomic_inc(atomic_t *atomic, int value)
   {
 	int v;
 
 	ATOMIC_IS_INITIALIZED(atomic);
 	fastlock_acquire(&atomic->lock);
-	v = ++(atomic->val);
+	v = (atomic->val += value);
 	fastlock_release(&atomic->lock);
 	return v;
   }
 
-  static inline int atomic_dec(atomic_t *atomic)
+  static inline int atomic_dec(atomic_t *atomic, int value)
   {
 	int v;
 
 	ATOMIC_IS_INITIALIZED(atomic);
 	fastlock_acquire(&atomic->lock);
-	v = --(atomic->val);
+	v = (atomic->val -= value);
 	fastlock_release(&atomic->lock);
 	return v;
   }

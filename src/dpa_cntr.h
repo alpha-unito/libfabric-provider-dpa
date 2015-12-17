@@ -50,9 +50,16 @@ typedef struct dpa_cntr dpa_cntr;
 #define _DPA_CNTR_H
 
 #include "dpa.h"
+#include "locks.h"
+#include "dpa_eq.h"
 
-struct dpa_cntr {
+struct dpa_fid_cntr {
   struct fid_cntr cntr;
+  uint64_t counter;
+  uint64_t err;
+  atomic_t counter_atomic;
+  atomic_t err_atomic;
+  queue_progress progress;
 };
 
 int dpa_cntr_open(struct fid_domain *domain, struct fi_cntr_attr *attr,

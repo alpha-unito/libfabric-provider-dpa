@@ -39,18 +39,7 @@ typedef struct dpa_cq_event dpa_cq_event;
 #include "dpa_ep.h"
 #include "dpa_domain.h"
 #include "dpa.h"
-
-struct _cq_interrupt {
-  dpa_local_interrupt_t handle;
-  uint64_t event_flags;
-  dpa_intid_t id;
-  dpa_desc_t sd;
-};
-
-struct _cq_progress {
-  progress_queue_t func;
-  void* arg;
-};
+#include "dpa_eq.h"
   
 
 struct dpa_fid_cq {
@@ -61,8 +50,8 @@ struct dpa_fid_cq {
   struct slist event_queue;
   struct slist error_queue;
   struct slist free_list;
-  struct _cq_interrupt interrupt;
-  struct _cq_progress progress;
+  struct queue_interrupt interrupt;
+  struct queue_progress progress;
 };
 
 struct dpa_cq_event {

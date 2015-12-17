@@ -97,4 +97,6 @@ int	dpa_domain_open(struct fid_fabric *fabric, struct fi_info *info, struct fid_
 }
 
 int dpa_domain_close(struct fid *fid){
+  dpa_fid_domain* domain = container_of(fid, dpa_fid_domain, domain.fid);
+  free(domain);
 }

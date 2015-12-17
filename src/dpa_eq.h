@@ -31,11 +31,55 @@
  *     Marco Aldinucci (UniTO-A3Cube CSO): code design supervision"
  */
 typedef struct dpa_fid_eq dpa_fid_eq;
+typedef struct queue_interrupt queue_interrupt;
+typedef struct queue_progress queue_progress;
 
 #ifndef DPA_EQ_H
 #define DPA_EQ_H
 #include "dpa.h"
 #include "dpa_ep.h"
+
+
+struct queue_interrupt {
+  dpa_local_interrupt_t handle;
+  uint64_t event_flags;
+  dpa_intid_t id;
+  dpa_desc_t sd;
+};
+
+static inline void queue_interrupt_init(queue_interrupt* interrupt) {
+  interrupt->handle = NULL;
+  interrupt->event_flags = 0;
+  interrupt->id = 0;
+  interrupt->sd = NULL;
+}
+
+static inline dpa_error_t wait_interrupt(queue_interrupt* interrupt, int timeout) {
+  if (!interrupt->handle) return;
+  DPA_DEBUG("Wait for queue interrupt\n");
+  dpa_error_t error;
+  DPAWaitForInterrupt(cq->interrupt.handle, timeout < 0 ? DPA_INFINITE_TIMEOUT : timeout, NO_FLAGS, &error);
+  if (error != DPA_ERR_OK && error != DPA_ERR_TIMEOUT)
+      DPALIB_CHECK_ERROR(DPAWaitForInterrupt, );
+  return error;
+}
+struct queue_progress {
+  progress_queue_t func;
+  void* arg;
+};
+
+static inline void queue_progress_init(queue_progress* progress) {
+  progress->func = NULL;
+  progress->arg = NULL;
+}
+
+static inline int make_queue_progress(queue_progress* progress, int timeout) {
+  if (progress->func) {
+    DPA_DEBUG("Enforcing queue progress\n");
+    return progress.func(progress->arg, timeout);
+  }
+  return timeout;
+}
 
 typedef struct dpa_fid_eq {
   struct fid_eq eq;
@@ -44,8 +88,7 @@ typedef struct dpa_fid_eq {
   struct slist event_queue;
   struct slist error_queue;
   struct slist free_list;
-  progress_queue_t progress;
-  void* progress_arg;
+  queue_progress progress;
 } dpa_fid_eq;
 
 typedef struct dpa_eq_event {
