@@ -33,11 +33,11 @@
 typedef struct dpa_fid_eq dpa_fid_eq;
 typedef struct queue_interrupt queue_interrupt;
 typedef struct queue_progress queue_progress;
+typedef int (*progress_queue_t)(void* arg, int timeout_millis);
 
-#ifndef DPA_EQ_H
-#define DPA_EQ_H
+#ifndef _DPA_EQ_H
+#define _DPA_EQ_H
 #include "dpa.h"
-#include "dpa_ep.h"
 
 
 struct queue_interrupt {
@@ -55,14 +55,15 @@ static inline void queue_interrupt_init(queue_interrupt* interrupt) {
 }
 
 static inline dpa_error_t wait_interrupt(queue_interrupt* interrupt, int timeout) {
-  if (!interrupt->handle) return;
+  if (!interrupt->handle) return FI_SUCCESS;
   DPA_DEBUG("Wait for queue interrupt\n");
   dpa_error_t error;
-  DPAWaitForInterrupt(cq->interrupt.handle, timeout < 0 ? DPA_INFINITE_TIMEOUT : timeout, NO_FLAGS, &error);
+  DPAWaitForInterrupt(interrupt->handle, timeout < 0 ? DPA_INFINITE_TIMEOUT : timeout, NO_FLAGS, &error);
   if (error != DPA_ERR_OK && error != DPA_ERR_TIMEOUT)
       DPALIB_CHECK_ERROR(DPAWaitForInterrupt, );
   return error;
 }
+
 struct queue_progress {
   progress_queue_t func;
   void* arg;
@@ -76,7 +77,7 @@ static inline void queue_progress_init(queue_progress* progress) {
 static inline int make_queue_progress(queue_progress* progress, int timeout) {
   if (progress->func) {
     DPA_DEBUG("Enforcing queue progress\n");
-    return progress.func(progress->arg, timeout);
+    return progress->func(progress->arg, timeout);
   }
   return timeout;
 }

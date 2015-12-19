@@ -152,7 +152,9 @@ inline ssize_t dpa_sendmsg(struct fid_ep *ep, const struct fi_msg *msg, uint64_t
                      free_entries, process_send_queue);
 }
 
-/* The following two functions are useful to handle recvv and sendv. However, they have been removed for performance reasons (to handle iovecs in msg_queue, you must allocate memory)
+/* The following two functions are useful to handle recvv and sendv. 
+However, they have been removed for performance reasons 
+(to handle iovecs in msg_queue, you must allocate memory)
 
 static inline size_t scatter_gather(const struct iovec* dest, size_t dest_count, const struct iovec* src, size_t src_count) {
   if(!dest_count || !src_count) return 0;
@@ -264,18 +266,28 @@ void process_recv_queue(dpa_fid_ep* ep, uint8_t locked) {
     DPA_DEBUG("received msg size: %u, buffer size: %u, copied: %u\n",
               msg_size, head->len, copied);
 
-    struct fi_cq_err_entry completion = {
-      .op_context = head->context,
-      .flags = FI_MSG | FI_RECV,
-      .len = copied,
-      .buf = (void*)head->buf,
-      .data = 0,
-      .err = copied < msg_size ? FI_ETOOSMALL : 0,
-      .olen = msg_size - copied,
-      .prov_errno = DPA_ERR_OK,
-      .err_data = NULL
-    };
-    put_in_cqs(ep, &completion);
+    int err = copied < msg_size ? FI_ETOOSMALL : FI_SUCCESS;
+    if (ep->recv_cq) {
+      // generate completion
+      struct fi_cq_err_entry completion = {
+        .op_context = head->context,
+        .flags = FI_MSG | FI_RECV,
+        .len = copied,
+        .buf = (void*)head->buf,
+        .data = 0,
+        .err = err,
+        .olen = msg_size - copied,
+        .prov_errno = DPA_ERR_OK,
+        .err_data = NULL
+      };
+      cq_add(ep->recv_cq, &completion);
+    }
+    if (ep->recv_cntr) {
+      if (err == FI_SUCCESS)
+        fi_cntr_inc(&ep->recv_cntr);
+      else
+        dpa_cntr_err_inc(&ep->recv_cntr);
+    }
     // put in free list
     slist_insert_head_unsafe(entry, &ep->msg_recv_info.free_entries);
   }
@@ -353,14 +365,19 @@ void process_send_queue(dpa_fid_ep* ep, uint8_t locked) {
     }
     //actually write the message on remote buffer.
     write_msg(send_info, head, avail_space-needed_space);
-    // generate completion
-    struct fi_cq_err_entry completion = {
-      .op_context = head->context,
-      .flags = FI_MSG | FI_SEND,
-      .data = 0,
-      .err = 0
-    };
-    put_in_cqs(ep, &completion);
+    if (ep->send_cq) {
+      // generate completion
+      struct fi_cq_err_entry completion = {
+        .op_context = head->context,
+        .flags = FI_MSG | FI_SEND,
+        .data = 0,
+        .err = 0
+      };
+      cq_add(ep->send_cq, &completion);
+    }
+    if (ep->send_cntr)
+      dpa_cntr_inc(ep->send_cntr);
+    
     // move to free queue
     slist_remove_head_unsafe(queue);
     slist_insert_head_unsafe(&head->list_entry, &(send_info->free_entries));

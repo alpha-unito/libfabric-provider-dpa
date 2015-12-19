@@ -188,7 +188,7 @@ static inline int cq_signal(dpa_fid_cq* cq) {
   else return 0;
 }
 
-void cq_add(dpa_fid_cq* cq, struct fi_cq_err_entry* entry, fi_addr_t src_addr) {
+void cq_add_src(dpa_fid_cq* cq, struct fi_cq_err_entry* entry, fi_addr_t src_addr) {
   DPA_DEBUG("Adding item to completion queue\n");
 
   cq_lock(cq);
@@ -318,11 +318,11 @@ static inline void wait_cq_interrupt(dpa_fid_cq* cq, int timeout) {
     .buf = NULL,
     .data = cq->interrupt.id
   };
-  cq_add(cq, &entry, 0);
+  cq_add(cq, &entry);
 }
 
 static inline void make_cq_progress(dpa_fid_cq* cq, int timeout) {
-  timeout = make_queue_progress(cq->progress, timeout);
+  timeout = make_queue_progress(&cq->progress, timeout);
   wait_cq_interrupt(cq, timeout);
 }
 

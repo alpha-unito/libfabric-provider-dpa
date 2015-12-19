@@ -32,9 +32,8 @@
  */
 typedef struct dpa_fid_ep dpa_fid_ep;
 typedef struct dpa_fid_pep dpa_fid_pep;
-typedef int (*progress_queue_t)(void* arg, int timeout_millis);
-#ifndef DPA_EP_H
-#define DPA_EP_H
+#ifndef _DPA_EP_H
+#define _DPA_EP_H
 
 #include "dpa_cm.h"
 #include "dpa_msg_cm.h"
@@ -44,12 +43,7 @@ typedef int (*progress_queue_t)(void* arg, int timeout_millis);
 #include "dpa.h"
 #include "dpa_av.h"
 #include "dpa_mr.h"
-
-typedef struct dpa_ep_cq {
-  uint64_t flags;
-  dpa_fid_cq* cq;
-  struct slist_entry list_entry;
-} dpa_ep_cq;
+#include "dpa_cntr.h"
 
 struct dpa_fid_pep {
   struct fid_pep pep;
@@ -79,7 +73,14 @@ struct dpa_fid_ep {
   dpa_fid_pep* pep;
   dpa_fid_domain* domain;
   uint64_t caps;
-  struct slist cqs;
+  dpa_fid_cq* send_cq;
+  dpa_fid_cq* recv_cq;
+  dpa_fid_cq* read_cq;
+  dpa_fid_cq* write_cq;
+  dpa_fid_cntr* send_cntr;
+  dpa_fid_cntr* recv_cntr;
+  dpa_fid_cntr* read_cntr;
+  dpa_fid_cntr* write_cntr;
   dpa_fid_av* av;
   dpa_fid_mr* mr;
   dpa_fid_eq* eq;

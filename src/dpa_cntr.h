@@ -44,7 +44,7 @@
  *     Paola Pisano (UniTO-A3Cube CEO): testing environment
  *     Marco Aldinucci (UniTO-A3Cube CSO): code design supervision
  */
-typedef struct dpa_cntr dpa_cntr;
+typedef struct dpa_fid_cntr dpa_fid_cntr;
 
 #ifndef _DPA_CNTR_H
 #define _DPA_CNTR_H
@@ -52,9 +52,13 @@ typedef struct dpa_cntr dpa_cntr;
 #include "dpa.h"
 #include "locks.h"
 #include "dpa_eq.h"
+#include "dpa_domain.h"
 
 struct dpa_fid_cntr {
   struct fid_cntr cntr;
+  dpa_fid_domain* domain;
+  void (*inc)(dpa_fid_cntr *cntr);
+  void (*err_inc)(dpa_fid_cntr *cntr);
   uint64_t counter;
   uint64_t err;
   atomic_t counter_atomic;
@@ -64,5 +68,13 @@ struct dpa_fid_cntr {
 
 int dpa_cntr_open(struct fid_domain *domain, struct fi_cntr_attr *attr,
                  struct fid_cntr **cntr, void *context);
+
+static inline void dpa_cntr_inc(dpa_fid_cntr* cntr) {
+  cntr->inc(cntr);
+}
+
+static inline void dpa_cntr_err_inc(dpa_fid_cntr* cntr) {
+  cntr->err_inc(cntr);
+}
 #endif
 

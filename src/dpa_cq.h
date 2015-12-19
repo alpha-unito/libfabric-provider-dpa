@@ -50,8 +50,8 @@ struct dpa_fid_cq {
   struct slist event_queue;
   struct slist error_queue;
   struct slist free_list;
-  struct queue_interrupt interrupt;
-  struct queue_progress progress;
+  queue_interrupt interrupt;
+  queue_progress progress;
 };
 
 struct dpa_cq_event {
@@ -61,6 +61,11 @@ struct dpa_cq_event {
 };
 
 int dpa_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr, struct fid_cq **cq, void *context);
-void cq_add(dpa_fid_cq* cq, struct fi_cq_err_entry* entry, fi_addr_t src_addr);
+void cq_add_src(dpa_fid_cq* cq, struct fi_cq_err_entry* entry, fi_addr_t src_addr);
+
+
+static inline void cq_add(dpa_fid_cq* cq, struct fi_cq_err_entry* entry) {
+  cq_add_src(cq, entry, FI_ADDR_NOTAVAIL);
+}
 
 #endif

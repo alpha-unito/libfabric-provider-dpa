@@ -167,7 +167,7 @@ static ssize_t dpa_eq_sread(struct fid_eq *eq, uint32_t *event,
     if (result == -FI_EAGAIN) {
       make_queue_progress(&eq_priv->progress, timeout);
       // with automatic progress wait until progress happens
-      if (!eq_priv->progress && timeout) {
+      if (!eq_priv->progress.func && timeout) {
         LIST_SAFE(&eq_priv->event_queue, ({
               fastlock_wait_timeout(&eq_priv->cond, &eq_priv->event_queue.lock, timeout);
             }));

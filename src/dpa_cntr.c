@@ -50,20 +50,23 @@
 
 int dpa_cntr_close(struct fid* fid);
 static struct fi_ops dpa_cntr_fi_ops = {
-  .size = sizeof(fi_ops),
+  .size = sizeof(struct fi_ops),
   .close = dpa_cntr_close,
   .bind = fi_no_bind,
   .control = fi_no_control,
   .ops_open = fi_no_ops_open
 };
 
+int dpa_cntr_wait(struct fid_cntr *cntr, uint64_t threshold, int timeout);
+
 uint64_t dpa_cntr_read_unsafe(struct fid_cntr *cntr);
 uint64_t dpa_cntr_readerr_unsafe(struct fid_cntr *cntr);
-int	dpa_cntr_add_unsafe(struct fid_cntr *cntr, uint64_t value);
-int	dpa_cntr_set_unsafe(struct fid_cntr *cntr, uint64_t value);
-int	dpa_cntr_set_unsafe(struct fid_cntr *cntr, uint64_t threshold, int timeout);
+int dpa_cntr_add_unsafe(struct fid_cntr *cntr, uint64_t value);
+static void dpa_cntr_inc_unsafe(dpa_fid_cntr *cntr);
+static void dpa_cntr_err_inc_unsafe(dpa_fid_cntr *cntr);
+int dpa_cntr_set_unsafe(struct fid_cntr *cntr, uint64_t value);
 static struct fi_ops_cntr dpa_fi_ops_cntr_unsafe = {
-  .size = sizeof(fi_ops_cntr),
+  .size = sizeof(struct fi_ops_cntr),
   .read = dpa_cntr_read_unsafe,
   .readerr = dpa_cntr_readerr_unsafe,
   .add = dpa_cntr_add_unsafe,
@@ -72,11 +75,12 @@ static struct fi_ops_cntr dpa_fi_ops_cntr_unsafe = {
 };
 uint64_t dpa_cntr_read_safe(struct fid_cntr *cntr);
 uint64_t dpa_cntr_readerr_safe(struct fid_cntr *cntr);
-int	dpa_cntr_add_safe(struct fid_cntr *cntr, uint64_t value);
-int	dpa_cntr_set_safe(struct fid_cntr *cntr, uint64_t value);
-int	dpa_cntr_set_safe(struct fid_cntr *cntr, uint64_t threshold, int timeout);
+int dpa_cntr_add_safe(struct fid_cntr *cntr, uint64_t value);
+static void dpa_cntr_inc_safe(dpa_fid_cntr *cntr);
+static void dpa_cntr_err_inc_safe(dpa_fid_cntr *cntr);
+int dpa_cntr_set_safe(struct fid_cntr *cntr, uint64_t value);
 static struct fi_ops_cntr dpa_fi_ops_cntr_safe = {
-  .size = sizeof(fi_ops_cntr),
+  .size = sizeof(struct fi_ops_cntr),
   .read = dpa_cntr_read_safe,
   .readerr = dpa_cntr_readerr_safe,
   .add = dpa_cntr_add_safe,
@@ -93,19 +97,33 @@ int dpa_cntr_open(struct fid_domain *domain, struct fi_cntr_attr *attr,
     return -FI_EINVAL;
   }
   dpa_fid_domain* domain_priv = container_of(domain, dpa_fid_domain, domain);
-  dpa_fid_cntr* cntr_priv = calloc(1, sizeof(dpa_fid_cntr));
+  dpa_fid_cntr* cntr_priv = ALLOC_INIT(dpa_fid_cntr, {
+      .cntr = {
+        .fid = {
+          .fclass = FI_CLASS_CNTR,
+          .context = context,
+          .ops = &dpa_cntr_fi_ops,
+        }
+      },
+      .domain = domain_priv,
+  });
+        
   cntr_priv->cntr.fid.fclass = FI_CLASS_CNTR;
   cntr_priv->cntr.fid.context = context;
   cntr_priv->cntr.fid.ops = &dpa_cntr_fi_ops;
-  init_queue_progress(&cntr_priv->progress);
+  queue_progress_init(&cntr_priv->progress);
   if (domain_priv->threading >= FI_THREAD_COMPLETION) {
     cntr_priv->counter = 0;
     cntr_priv->err = 0;
     cntr_priv->cntr.ops = &dpa_fi_ops_cntr_unsafe;
+    cntr_priv->inc = dpa_cntr_inc_unsafe;
+    cntr_priv->err_inc = dpa_cntr_err_inc_unsafe;
   } else {
-    atomic_initialize(&cntr_priv->counter_atomic);
-    atomic_initialize(&cntr_priv->err_atomic);
+    atomic_initialize(&cntr_priv->counter_atomic, 0);
+    atomic_initialize(&cntr_priv->err_atomic, 0);
     cntr_priv->cntr.ops = &dpa_fi_ops_cntr_safe;
+    cntr_priv->inc = dpa_cntr_inc_safe;
+    cntr_priv->err_inc = dpa_cntr_err_inc_safe;
   }
 }
 
@@ -114,52 +132,64 @@ int dpa_cntr_close(struct fid* fid) {
 }
 
 uint64_t dpa_cntr_read_unsafe(struct fid_cntr *fid_cntr){
-  dpa_fid_cntr cntr = container_of(fid_cntr, dpa_fid_cntr, cntr);
+  dpa_fid_cntr* cntr = container_of(fid_cntr, dpa_fid_cntr, cntr);
   make_queue_progress(&cntr->progress, 0);
   return cntr->counter;
 }
 uint64_t dpa_cntr_readerr_unsafe(struct fid_cntr *fid_cntr){
-  dpa_fid_cntr cntr = container_of(fid_cntr, dpa_fid_cntr, cntr);
+  dpa_fid_cntr* cntr = container_of(fid_cntr, dpa_fid_cntr, cntr);
   make_queue_progress(&cntr->progress, 0);
   return cntr->err;
 }
-int	dpa_cntr_add_unsafe(struct fid_cntr *cntr, uint64_t value){
+int dpa_cntr_add_unsafe(struct fid_cntr *cntr, uint64_t value){
   container_of(cntr, dpa_fid_cntr, cntr)->counter += value;
   return FI_SUCCESS;
 }
-int	dpa_cntr_set_unsafe(struct fid_cntr *cntr, uint64_t value){
+static void dpa_cntr_inc_unsafe(dpa_fid_cntr *cntr){
+  cntr->counter++;
+}
+static void dpa_cntr_err_inc_unsafe(dpa_fid_cntr *cntr){
+  cntr->err++;
+}
+int dpa_cntr_set_unsafe(struct fid_cntr *cntr, uint64_t value){
   container_of(cntr, dpa_fid_cntr, cntr)->counter = value;
   return FI_SUCCESS;
 }
 
 
 uint64_t dpa_cntr_read_safe(struct fid_cntr *fid_cntr){
-  dpa_fid_cntr cntr = container_of(fid_cntr, dpa_fid_cntr, cntr);
+  dpa_fid_cntr* cntr = container_of(fid_cntr, dpa_fid_cntr, cntr);
   make_queue_progress(&cntr->progress, 0);
   return atomic_get(&cntr->counter_atomic);
 }
 uint64_t dpa_cntr_readerr_safe(struct fid_cntr *fid_cntr){
-  dpa_fid_cntr cntr = container_of(fid_cntr, dpa_fid_cntr, cntr);
+  dpa_fid_cntr* cntr = container_of(fid_cntr, dpa_fid_cntr, cntr);
   make_queue_progress(&cntr->progress, 0);
   return atomic_get(&cntr->err_atomic);
 }
-int	dpa_cntr_add_safe(struct fid_cntr *cntr, uint64_t value){
-  atomic_inc(&container_of(cntr, dpa_fid_cntr, cntr)->counter_atomic,value);
+int dpa_cntr_add_safe(struct fid_cntr *cntr, uint64_t value){
+  atomic_add(&container_of(cntr, dpa_fid_cntr, cntr)->counter_atomic,value);
   return FI_SUCCESS;
 }
-int	dpa_cntr_set_safe(struct fid_cntr *cntr, uint64_t value){
-  atomic_set(&container_of(cntr, dpa_fid_cntr, cntr)->counter, value);
+static void dpa_cntr_inc_safe(dpa_fid_cntr *cntr){
+  atomic_inc(&cntr->counter_atomic);
+}
+static void dpa_cntr_err_inc_safe(dpa_fid_cntr *cntr){
+  atomic_inc(&cntr->err_atomic);
+}
+int dpa_cntr_set_safe(struct fid_cntr *cntr, uint64_t value){
+  atomic_set(&container_of(cntr, dpa_fid_cntr, cntr)->counter_atomic, value);
   return FI_SUCCESS;
 }
 
 
-int	dpa_cntr_wait(struct fid_cntr *fid_cntr, uint64_t threshold, int timeout) {
-  dpa_fid_cntr cntr = container_of(fid_cntr, dpa_fid_cntr, cntr);
-  struct fid_ops_cntr ops = cntr->cntr.ops;
+int dpa_cntr_wait(struct fid_cntr *fid_cntr, uint64_t threshold, int timeout) {
+  dpa_fid_cntr* cntr = container_of(fid_cntr, dpa_fid_cntr, cntr);
+  struct fi_ops_cntr* ops = cntr->cntr.ops;
   int err = ops->readerr(fid_cntr);
   while(timeout > 0 && ops->read(fid_cntr) < threshold
         && ops->readerr(fid_cntr) == err)
-    timeout = make_queue_progress(&cntr->progress);
+    timeout = make_queue_progress(&cntr->progress, timeout);
   return (timeout == 0 && cntr->counter < threshold)
     ? -FI_ETIMEDOUT : 0;
 }
