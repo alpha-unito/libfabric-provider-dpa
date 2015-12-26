@@ -100,10 +100,6 @@ int dpa_ep_open(struct fid_domain *domain, struct fi_info *info,
 int dpa_passive_ep_open(struct fid_fabric *fabric, struct fi_info *info,
                         struct fid_pep **pep, void *context);
 
-
-void put_in_cqs_src(dpa_fid_ep* ep, struct fi_cq_err_entry *entry, fi_addr_t src_addr);
-void put_in_cqs(dpa_fid_ep* ep, struct fi_cq_err_entry *entry);
-
 static inline void lock_if_needed(dpa_fid_ep* ep, slist* list) {
   if (ep->lock_needed) slist_lock(list);
 }

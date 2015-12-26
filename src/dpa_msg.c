@@ -284,9 +284,9 @@ void process_recv_queue(dpa_fid_ep* ep, uint8_t locked) {
     }
     if (ep->recv_cntr) {
       if (err == FI_SUCCESS)
-        fi_cntr_inc(&ep->recv_cntr);
+        dpa_cntr_inc(ep->recv_cntr);
       else
-        dpa_cntr_err_inc(&ep->recv_cntr);
+        dpa_cntr_err_inc(ep->recv_cntr);
     }
     // put in free list
     slist_insert_head_unsafe(entry, &ep->msg_recv_info.free_entries);

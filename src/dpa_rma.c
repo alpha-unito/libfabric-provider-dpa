@@ -197,15 +197,20 @@ ssize_t dpa_readmsg(struct fid_ep *ep, const struct fi_msg_rma *msg,
     copied += copy;
   }
 
-  struct fi_cq_err_entry cq_entry = {
-    .op_context = msg->context,
-    .flags = FI_RMA | FI_READ,
-    .len = copied,
-    .buf = msg->iov_count == 1 ? msg->msg_iov[0].iov_base : NULL,
-    .data = msg->data,
-    .err = FI_SUCCESS
-  };
-  put_in_cqs_src(ep_priv, &cq_entry, ep_priv->connected ? 0 : msg->addr);
+  if (ep_priv->read_cq) {
+    struct fi_cq_err_entry cq_entry = {
+      .op_context = msg->context,
+      .flags = FI_RMA | FI_READ,
+      .len = copied,
+      .buf = msg->iov_count == 1 ? msg->msg_iov[0].iov_base : NULL,
+      .data = msg->data,
+      .err = FI_SUCCESS
+    };
+    cq_add_src(ep_priv->read_cq, &cq_entry, ep_priv->connected ? 0 : msg->addr);
+  }
+  if (ep_priv->read_cntr)
+    dpa_cntr_inc(ep_priv->read_cntr);
+  
 
   if (flags & FI_REMOTE_CQ_DATA) {
     signal_interrupt(&ep_priv->last_remote_mr, msg->data);
@@ -286,20 +291,24 @@ ssize_t dpa_writemsg(struct fid_ep *ep, const struct fi_msg_rma *msg,
   for (int i = 0; i < msg->iov_count; i++)
     total_len += msg->msg_iov[i].iov_len;
 
-  struct fi_cq_err_entry cq_entry = {
-    .op_context = msg->context,
-    .flags = FI_RMA | FI_WRITE,
-    .len = copied,
-    .buf = NULL,
-    .data = msg->data,
-    .olen = total_len - copied,
-    .err = total_len == copied ? FI_SUCCESS : FI_ETOOSMALL
-  };
-  put_in_cqs_src(ep_priv, &cq_entry, ep_priv->connected ? 0 : msg->addr);
+  if (ep_priv->write_cq) {
+    struct fi_cq_err_entry cq_entry = {
+      .op_context = msg->context,
+      .flags = FI_RMA | FI_WRITE,
+      .len = copied,
+      .buf = NULL,
+      .data = msg->data,
+      .olen = total_len - copied,
+      .err = total_len == copied ? FI_SUCCESS : FI_ETOOSMALL
+    };
+    cq_add_src(ep_priv->write_cq, &cq_entry, ep_priv->connected ? 0 : msg->addr);
+  }
+  if (ep_priv->write_cntr)
+    dpa_cntr_inc(ep_priv->write_cntr);
 
-  if (flags & FI_REMOTE_CQ_DATA) {
+  if (flags & FI_REMOTE_CQ_DATA)
     signal_interrupt(&ep_priv->last_remote_mr, msg->data);
-  } else if (!(flags & FI_MORE))
+  else if (!(flags & FI_MORE))
     DPAFlush(ep_priv->last_remote_mr.sequence, DPA_FLAG_FLUSH_CPU_BUFFERS_ONLY);
   return FI_SUCCESS;
 }
