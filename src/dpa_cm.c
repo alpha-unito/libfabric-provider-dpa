@@ -30,6 +30,7 @@
  *     Paola Pisano (UniTO-A3Cube CEO): testing environment
  *     Marco Aldinucci (UniTO-A3Cube CSO): code design supervision"
  */
+#define LOG_SUBSYS FI_LOG_EP_CTRL
 #include "dpa_cm.h"
 #include "dpa_ep.h"
 #include "dpa_segments.h"
