@@ -125,10 +125,13 @@ int dpa_cntr_open(struct fid_domain *domain, struct fi_cntr_attr *attr,
     cntr_priv->inc = dpa_cntr_inc_safe;
     cntr_priv->err_inc = dpa_cntr_err_inc_safe;
   }
+  *cntr = &cntr_priv->cntr;
+  return FI_SUCCESS;
 }
 
 int dpa_cntr_close(struct fid* fid) {
   free(container_of(fid, dpa_fid_cntr, cntr.fid));
+  return FI_SUCCESS;
 }
 
 uint64_t dpa_cntr_read_unsafe(struct fid_cntr *fid_cntr){
