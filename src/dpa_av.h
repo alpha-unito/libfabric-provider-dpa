@@ -55,7 +55,7 @@ int dpa_av_lookup(struct fid_av *av, fi_addr_t fi_addr, void *addr,
                          size_t *addrlen);
 
 static inline fi_addr_t _get_fi_addr(dpa_fid_av* av, int i) {
-  return av->type == FI_AV_TABLE ? i : (fi_addr_t) &av->table[i];
+  return av->type == FI_AV_TABLE ? (fi_addr_t) i : (fi_addr_t) &av->table[i];
 }
 
 static inline fi_addr_t lookup_fi_addr(dpa_fid_av* av, dpa_addr_t* addr) {

@@ -125,6 +125,8 @@ int dpa_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr, struct fid_c
       .domain = container_of(domain, dpa_fid_domain, domain),
     });
 
+  queue_progress_init(&cq_priv->progress);
+  queue_interrupt_init(&cq_priv->interrupt);
   slist_init(&cq_priv->event_queue);
   slist_init(&cq_priv->error_queue);
   slist_init(&cq_priv->free_list);
@@ -186,7 +188,7 @@ static inline int cq_signal(dpa_fid_cq* cq) {
   else return 0;
 }
 
-void cq_add(dpa_fid_cq* cq, struct fi_cq_err_entry* entry, fi_addr_t src_addr) {
+void cq_add_src(dpa_fid_cq* cq, struct fi_cq_err_entry* entry, fi_addr_t src_addr) {
   DPA_DEBUG("Adding item to completion queue\n");
 
   cq_lock(cq);
@@ -279,7 +281,7 @@ static int dpa_cq_wait_data(struct fid_cq* cq, uint64_t* data, uint64_t flags) {
   if (*data != interrupt_id)
     return -FI_EINVAL; // truncation occurred, cannot use this interrupt id
 
-  struct _cq_interrupt* interrupt = &(container_of(cq, dpa_fid_cq, cq)->interrupt);
+  queue_interrupt* interrupt = &(container_of(cq, dpa_fid_cq, cq)->interrupt);
   unsigned int dpa_int_flags = interrupt_id ? DPA_FLAG_FIXED_INTNO : NO_FLAGS;
   dpa_error_t error;
   DPA_DEBUG("Create interrupt virtual device\n");
@@ -304,16 +306,11 @@ static int dpa_cq_wait_data(struct fid_cq* cq, uint64_t* data, uint64_t flags) {
   return -FI_EOTHER;
 }
   
-static inline void wait_interrupt(dpa_fid_cq* cq, int timeout) {
+static inline void wait_cq_interrupt(dpa_fid_cq* cq, int timeout) {
   if (!cq->interrupt.handle) return;
   DPA_DEBUG("Wait for completion queue interrupt\n");
-  dpa_error_t error;
-  DPAWaitForInterrupt(cq->interrupt.handle, timeout < 0 ? DPA_INFINITE_TIMEOUT : timeout, NO_FLAGS, &error);
-  if (error != DPA_ERR_OK) {
-    if (error != DPA_ERR_TIMEOUT)
-      DPALIB_CHECK_ERROR(DPAWaitForInterrupt, return);
-    return;
-  }
+  dpa_error_t error = wait_interrupt(&cq->interrupt, timeout);
+  if (error != DPA_ERR_OK) return;
   struct fi_cq_err_entry entry = {
     .op_context = NULL,
     .flags = cq->interrupt.event_flags,
@@ -321,14 +318,12 @@ static inline void wait_interrupt(dpa_fid_cq* cq, int timeout) {
     .buf = NULL,
     .data = cq->interrupt.id
   };
-  cq_add(cq, &entry, 0);
+  cq_add(cq, &entry);
 }
 
 static inline void make_cq_progress(dpa_fid_cq* cq, int timeout) {
-  if (cq->progress.func)
-    timeout = cq->progress.func(cq->progress.arg, timeout);
-  if (cq->interrupt.handle)
-    wait_interrupt(cq, timeout);
+  timeout = make_queue_progress(&cq->progress, timeout);
+  wait_cq_interrupt(cq, timeout);
 }
 
 static int dpa_cq_ops_open(struct fid *fid, const char *name,

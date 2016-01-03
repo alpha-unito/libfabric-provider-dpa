@@ -144,6 +144,14 @@ int dpa_ep_open(struct fid_domain *domain, struct fi_info *info,
       .connected = 0,
       .lock_needed = domain_priv->threading < FI_THREAD_FID,
       .caps = ep_caps,
+      .send_cq = NULL,
+      .read_cq = NULL,
+      .write_cq = NULL,
+      .recv_cq = NULL,
+      .send_cntr = NULL,
+      .read_cntr = NULL,
+      .write_cntr = NULL,
+      .recv_cntr = NULL,
       .last_remote_mr = {
         .target = {
           .nodeId = 0,
@@ -188,7 +196,6 @@ int dpa_ep_open(struct fid_domain *domain, struct fi_info *info,
     ep_priv->pep = container_of(info->handle, dpa_fid_pep, pep.fid);
   }
   
-  slist_init(&(ep_priv->cqs));
   if (can_msg(ep_caps)) {
     slist_init(&ep_priv->msg_send_info.msg_queue);
     slist_init(&ep_priv->msg_recv_info.msg_queue);
@@ -256,8 +263,8 @@ static int dpa_pep_close(fid_t fid) {
   DPA_DEBUG("Closing endpoint\n");
   struct dpa_fid_pep *pep = container_of(fid, dpa_fid_pep, pep.fid);
   fastlock_destroy(&pep->lock);
-  pep->eq->progress = NULL;
-  pep->eq->progress_arg = NULL;
+  if (pep->eq)
+    queue_progress_init(&pep->eq->progress);
   dpa_destroy_segment(pep->control_info);
   fi_freeinfo(pep->info);
   free(pep);
@@ -269,6 +276,19 @@ static int dpa_pep_close(fid_t fid) {
     DPA_WARN("Binding" #bnd "to endpoint on a different domain\n");     \
     return -FI_EINVAL;                                                  \
   }
+
+static inline void bind_progress(dpa_fid_ep* ep, queue_progress* progress, uint64_t flags) {
+    if (ep->domain->data_progress != FI_PROGRESS_MANUAL)
+      return;
+    
+    if ((flags | FI_RECV | FI_SEND) == flags)
+      progress->func = (progress_queue_t) progress_sendrecv_queues;
+    else if (flags & FI_RECV)
+      progress->func = (progress_queue_t) progress_recv_queue;
+    else if (flags & FI_SEND)
+      progress->func = (progress_queue_t) progress_send_queue;
+    progress->arg = ep;
+}
 
 static int dpa_ep_bind(struct fid *fid, struct fid *bfid, uint64_t flags){
   if (!bfid) return -FI_EINVAL;
@@ -288,25 +308,22 @@ static int dpa_ep_bind(struct fid *fid, struct fid *bfid, uint64_t flags){
     DPA_DEBUG("Binding completion queue to endpoint\n");
     dpa_fid_cq* cq = container_of(bfid, dpa_fid_cq, cq.fid);
     CHECK_DOMAIN(ep, cq);
-    if (ep->domain->data_progress == FI_PROGRESS_MANUAL) {
-      if ((flags & FI_RECV) && (flags & FI_SEND))
-        cq->progress.func = (progress_queue_t) progress_sendrecv_queues;
-      else if (flags & FI_RECV)
-        cq->progress.func = (progress_queue_t) progress_recv_queue;
-      else if (flags & FI_SEND)
-        cq->progress.func = (progress_queue_t) progress_send_queue;
-      cq->progress.arg = ep;
-    }
-    if (flags & FI_SEND) flags |= FI_WRITE | FI_READ;
-	dpa_ep_cq* binding = ALLOC_INIT(dpa_ep_cq, {
-        .flags = flags,
-        .cq = cq,
-      });
-    slist_insert_tail(&(binding->list_entry), &(ep->cqs));
+    bind_progress(ep, &cq->progress, flags);
+    if (flags & FI_SEND) ep->send_cq = cq;
+    if (flags & (FI_SEND | FI_READ)) ep->read_cq = cq;
+    if (flags & (FI_SEND | FI_WRITE)) ep->write_cq = cq;
+    if (flags & FI_RECV) ep->recv_cq = cq;
     break;
   case FI_CLASS_CNTR:
-    DPA_WARN("Binding control to endpoint is not supported\n");
-    return -FI_ENOSYS;
+    DPA_DEBUG("Binding completion queue to endpoint\n");
+    dpa_fid_cntr* cntr = container_of(bfid, dpa_fid_cntr, cntr.fid);
+    CHECK_DOMAIN(ep, cntr);
+    bind_progress(ep, &cntr->progress, flags);
+    if (flags & FI_SEND) ep->send_cntr = cntr;
+    if (flags & (FI_SEND | FI_READ)) ep->read_cntr = cntr;
+    if (flags & (FI_SEND | FI_WRITE)) ep->write_cntr = cntr;
+    if (flags & FI_RECV) ep->recv_cntr = cntr;
+    break;
   case FI_CLASS_AV:
     DPA_DEBUG("Binding address vector to endpoint\n");
     dpa_fid_av* av = container_of(bfid, dpa_fid_av, av.fid);
@@ -372,18 +389,5 @@ static int dpa_getname(fid_t fid, void *addr, size_t *addrlen) {
   memcpy(addr, &local_addr, copy_size);
   *addrlen = sizeof(dpa_addr_t);
   return copy_size < sizeof(dpa_addr_t) ? -FI_ETOOSMALL : 0;
-}
-
-inline void put_in_cqs_src(dpa_fid_ep* ep, struct fi_cq_err_entry *entry,
-                           fi_addr_t src_addr) {
-  for(slist_entry* item = ep->cqs.head; item; item = item->next) {
-    dpa_ep_cq* ep_cq = container_of(item, dpa_ep_cq, list_entry);
-    if (ep_cq->flags & entry->flags)
-      cq_add(ep_cq->cq, entry, src_addr);
-  }
-}
-
-void put_in_cqs(dpa_fid_ep* ep, struct fi_cq_err_entry *entry) {
-  return put_in_cqs_src(ep, entry, FI_ADDR_NOTAVAIL);
 }
 

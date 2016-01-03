@@ -30,6 +30,7 @@
  *     Paola Pisano (UniTO-A3Cube CEO): testing environment
  *     Marco Aldinucci (UniTO-A3Cube CSO): code design supervision"
  */
+#define LOG_SUBSYS FI_LOG_EP_CTRL
 #include "dpa_cm.h"
 #include "dpa_ep.h"
 #include "dpa_segments.h"
@@ -61,8 +62,8 @@ int dpa_listen(struct fid_pep *pep) {
     dpa_alloc_segment(&pep_priv->control_info, pep_priv->control_info.segmentId,
                       CONTROL_SEGMENT_SIZE, zero_segment_initializer,
                       NULL, NULL);
-  pep_priv->eq->progress = (progress_queue_t) progress_eq;
-  pep_priv->eq->progress_arg = pep_priv;
+  pep_priv->eq->progress.func = (progress_queue_t) progress_eq;
+  pep_priv->eq->progress.arg = pep_priv;
   if (error == DPA_ERR_SEGMENTID_USED)
     return -FI_EADDRINUSE;
   else if (error != DPA_ERR_OK)
