@@ -53,29 +53,45 @@ int dpa_msg_fini() {
 
 typedef void (*process_queue_t)(dpa_fid_ep* ep, uint8_t locked);
 
-static inline ssize_t _dpa_msg_op(dpa_fid_ep *ep, const void *buf, size_t len,
-                                  uint64_t flags, void *context, slist* msg_queue,
-                                  slist* free_entries, process_queue_t process_queue) {
-  lock_if_needed(ep, msg_queue);
+static inline ssize_t _dpa_msg_enqueue(msg_queue_entry* msg, dpa_fid_ep* ep, slist* msg_queue, slist* free_entries) {
   msg_queue_entry* entry = get_free_entry(ep, free_entries);
-  entry->ep = ep;
-  entry->buf = buf;
-  entry->len = len;
-  entry->flags = flags;
-  entry->context = context;
+  memcpy(entry, msg, sizeof(msg_queue_entry));
   slist_insert_tail_unsafe(&entry->list_entry, msg_queue);
-  process_queue(ep, 1);
+  unlock_if_needed(ep, msg_queue);
   return FI_SUCCESS;
+}
+static inline int try_recv(msg_queue_entry* entry);
+static inline int try_send(msg_queue_entry* entry);
+
+static inline ssize_t _dpa_recv(dpa_fid_ep* ep, const void *buf, size_t len, 
+                                uint64_t flags, void* context) {
+                                  
+  slist* msg_queue = &ep->msg_recv_info.msg_queue;
+  slist* free_entries = &ep->msg_recv_info.free_entries;
+  msg_queue_entry entry = {
+    .ep = ep,
+    .buf = buf,
+    .len = len,
+    .flags = flags,
+    .context = context
+  };
+  lock_if_needed(ep, msg_queue);
+  int err = -FI_EAGAIN;
+  if (slist_empty(msg_queue))
+    err = try_recv(&entry);
+    
+
+  if(err == -FI_EAGAIN) {
+    DPA_DEBUG("Enqueuing receive\n");
+    return _dpa_msg_enqueue(&entry, ep, msg_queue, free_entries);
+  } else {
+    return FI_SUCCESS;
+  }
 }
 
 ssize_t dpa_recv(struct fid_ep *ep, void *buf, size_t len, void *desc,
 				 fi_addr_t src_addr, void *context){
-  DPA_DEBUG("Enqueuing receive\n");
-  dpa_fid_ep* ep_priv = container_of(ep, dpa_fid_ep, ep);
-  slist* msg_queue = &ep_priv->msg_recv_info.msg_queue;
-  slist* free_entries = &ep_priv->msg_recv_info.free_entries;
-  return _dpa_msg_op(ep_priv, buf, len, NO_FLAGS, context, msg_queue,
-                     free_entries, process_recv_queue);
+  return _dpa_recv(container_of(ep, dpa_fid_ep, ep), buf, len, NO_FLAGS, context);
 }
 
 ssize_t dpa_recvv(struct fid_ep *ep, const struct iovec *iov, void **desc,
@@ -101,23 +117,38 @@ inline ssize_t dpa_recvmsg(struct fid_ep *ep, const struct fi_msg *msg, uint64_t
     buf = msg->msg_iov[0].iov_base;
     len = msg->msg_iov[0].iov_len;
   }
-
-  DPA_DEBUG("Enqueuing receive\n");
   dpa_fid_ep* ep_priv = container_of(ep, dpa_fid_ep, ep);
-  slist* msg_queue = &ep_priv->msg_recv_info.msg_queue;
-  slist* free_entries = &ep_priv->msg_recv_info.free_entries;
-  return _dpa_msg_op(ep_priv, buf, len, flags, msg->context, msg_queue,
-                     free_entries, process_recv_queue);
+  return _dpa_recv(ep_priv, buf, len, flags, msg->context);
+}
+
+ssize_t _dpa_send(dpa_fid_ep* ep, const void *buf, size_t len, 
+                  uint64_t flags, void* context) {
+  slist* msg_queue = &ep->msg_send_info.msg_queue;
+  slist* free_entries = &ep->msg_send_info.free_entries;
+
+  msg_queue_entry entry = {
+    .ep = ep,
+    .buf = buf,
+    .len = len,
+    .flags = NO_FLAGS,
+    .context = context
+  };
+  lock_if_needed(ep, msg_queue);
+  int err = -FI_EAGAIN;
+  if (slist_empty(msg_queue))
+    err = try_send(&entry);
+
+  if (err == -FI_EAGAIN) {
+    DPA_DEBUG("Enqueuing send\n");
+    return _dpa_msg_enqueue(&entry, ep, msg_queue, free_entries);
+  } else {
+    return FI_SUCCESS;
+  }
 }
 
 ssize_t dpa_send(struct fid_ep *ep, const void *buf, size_t len, void *desc,
 				 fi_addr_t dest_addr, void *context) {
-  DPA_DEBUG("Enqueuing send\n");
-  dpa_fid_ep* ep_priv = container_of(ep, dpa_fid_ep, ep);
-  slist* msg_queue = &ep_priv->msg_send_info.msg_queue;
-  slist* free_entries = &ep_priv->msg_send_info.free_entries;
-  return _dpa_msg_op(ep_priv, buf, len, NO_FLAGS, context, msg_queue,
-                     free_entries, process_send_queue);
+  return _dpa_send(container_of(ep, dpa_fid_ep, ep), buf, len, NO_FLAGS, context);
 }
 
 ssize_t dpa_sendv(struct fid_ep *ep, const struct iovec *iov, void **desc,
@@ -143,18 +174,14 @@ inline ssize_t dpa_sendmsg(struct fid_ep *ep, const struct fi_msg *msg, uint64_t
     buf = msg->msg_iov[0].iov_base;
     len = msg->msg_iov[0].iov_len;
   }
-
-  DPA_DEBUG("Enqueuing send\n");
   dpa_fid_ep* ep_priv = container_of(ep, dpa_fid_ep, ep);
-  slist* msg_queue = &ep_priv->msg_send_info.msg_queue;
-  slist* free_entries = &ep_priv->msg_send_info.free_entries;
-  return _dpa_msg_op(ep_priv, buf, len, flags, msg->context, msg_queue,
-                     free_entries, process_send_queue);
+  return _dpa_send(ep_priv, buf, len, flags, msg->context);
 }
 
 /* The following two functions are useful to handle recvv and sendv. 
 However, they have been removed for performance reasons 
 (to handle iovecs in msg_queue, you must allocate memory)
+* TODO allocate memory only if iov_count > 1 and re-enable this
 
 static inline size_t scatter_gather(const struct iovec* dest, size_t dest_count, const struct iovec* src, size_t src_count) {
   if(!dest_count || !src_count) return 0;
@@ -245,7 +272,40 @@ static inline size_t read_msg(msg_queue_entry* msg, ep_recv_info* recv_info) {
   return read_size;
 }
 
-void process_recv_queue(dpa_fid_ep* ep, uint8_t locked) {
+static inline int try_recv(msg_queue_entry* entry) {
+  dpa_fid_ep* ep = entry->ep;
+  size_t msg_size = recv_read_ptr(&ep->msg_recv_info)->size;
+  if (msg_size<=0) return -FI_EAGAIN;
+  size_t copied = read_msg(entry, &ep->msg_recv_info);
+  DPA_DEBUG("received msg size: %u, buffer size: %u, copied: %u\n",
+            msg_size, entry->len, copied);
+
+  int err = copied < msg_size ? FI_ETOOSMALL : FI_SUCCESS;
+  if (ep->recv_cq) {
+    // generate completion
+    struct fi_cq_err_entry completion = {
+      .op_context = entry->context,
+      .flags = FI_MSG | FI_RECV,
+      .len = copied,
+      .buf = (void*)entry->buf,
+      .data = 0,
+      .err = err,
+      .olen = msg_size - copied,
+      .prov_errno = DPA_ERR_OK,
+      .err_data = NULL
+    };
+    cq_add(ep->recv_cq, &completion);
+  }
+  if (ep->recv_cntr) {
+    if (err == FI_SUCCESS)
+      dpa_cntr_inc(ep->recv_cntr);
+    else
+      dpa_cntr_err_inc(ep->recv_cntr);
+  }
+  return FI_SUCCESS;
+}
+
+inline void process_recv_queue(dpa_fid_ep* ep, uint8_t locked) {
   slist* queue = &ep->msg_recv_info.msg_queue;
   if (!ep->connected) {
     if (locked) unlock_if_needed(ep, queue);
@@ -256,42 +316,19 @@ void process_recv_queue(dpa_fid_ep* ep, uint8_t locked) {
     lock_if_needed(ep, queue);
   }
   local_buffer_info* buffer_info = ep->msg_recv_info.buffer;
-  size_t msg_size;
+  int err = FI_SUCCESS;
   // while there is a posted buffer AND we received a message
-  while (!slist_empty(queue) && (msg_size = recv_read_ptr(&ep->msg_recv_info)->size)) {
-    slist_entry* entry = slist_remove_head_unsafe(queue);
+  while (!slist_empty(queue) && err == FI_SUCCESS) {
+    slist_entry* entry = queue->head;
     msg_queue_entry* head = container_of(entry, msg_queue_entry, list_entry);
-
-    size_t copied = read_msg(head, &ep->msg_recv_info);
-    DPA_DEBUG("received msg size: %u, buffer size: %u, copied: %u\n",
-              msg_size, head->len, copied);
-
-    int err = copied < msg_size ? FI_ETOOSMALL : FI_SUCCESS;
-    if (ep->recv_cq) {
-      // generate completion
-      struct fi_cq_err_entry completion = {
-        .op_context = head->context,
-        .flags = FI_MSG | FI_RECV,
-        .len = copied,
-        .buf = (void*)head->buf,
-        .data = 0,
-        .err = err,
-        .olen = msg_size - copied,
-        .prov_errno = DPA_ERR_OK,
-        .err_data = NULL
-      };
-      cq_add(ep->recv_cq, &completion);
+    err = try_recv(head);
+    if (err == FI_SUCCESS) {
+      // put in free list
+      slist_remove_head_unsafe(queue);
+      slist_insert_head_unsafe(entry, &ep->msg_recv_info.free_entries);
     }
-    if (ep->recv_cntr) {
-      if (err == FI_SUCCESS)
-        dpa_cntr_inc(ep->recv_cntr);
-      else
-        dpa_cntr_err_inc(ep->recv_cntr);
-    }
-    // put in free list
-    slist_insert_head_unsafe(entry, &ep->msg_recv_info.free_entries);
   }
-  //remove locks (must lock before calling process_recv_queue)
+  //remove locks
   unlock_if_needed(ep, queue);
 }
 
@@ -342,6 +379,33 @@ static inline size_t remote_space(ep_send_info* send_info) {
   return read - send_info->write;
 }
 
+int try_send(msg_queue_entry* entry) {
+  // check if there is space to write data (according to remote info cache)
+  size_t needed_space = entry->len + offsetof(msg_data, data);
+  ep_send_info* send_info = &entry->ep->msg_send_info;
+  size_t avail_space = remote_space(send_info);
+  if (needed_space > avail_space) {
+    DPA_DEBUG("Unable to send, need %u bytes, got %u free bytes instead\n", needed_space, avail_space);
+    return -FI_EAGAIN;
+  }
+  //actually write the message on remote buffer.
+  write_msg(send_info, entry, avail_space-needed_space);
+  if (entry->ep->send_cq) {
+    // generate completion
+    struct fi_cq_err_entry completion = {
+      .op_context = entry->context,
+      .flags = FI_MSG | FI_SEND,
+      .data = 0,
+      .err = FI_SUCCESS
+    };
+    cq_add(entry->ep->send_cq, &completion);
+  }
+  if (entry->ep->send_cntr)
+    dpa_cntr_inc(entry->ep->send_cntr);
+  return FI_SUCCESS;
+}
+	
+
 void process_send_queue(dpa_fid_ep* ep, uint8_t locked) {
   ep_send_info* send_info = &ep->msg_send_info;
   slist* queue = &(send_info->msg_queue);
@@ -353,34 +417,15 @@ void process_send_queue(dpa_fid_ep* ep, uint8_t locked) {
     if (slist_empty(queue)) return;
     lock_if_needed(ep, queue);
   }
-  while (!slist_empty(queue)) {
+  int err = FI_SUCCESS;
+  while (!slist_empty(queue) && err != -FI_EAGAIN) {
     msg_queue_entry* head = container_of(queue->head, msg_queue_entry, list_entry);
-
-    // check if there is space to write data (according to remote info cache)
-    size_t needed_space = head->len + offsetof(msg_data, data);
-    size_t avail_space = remote_space(send_info);
-    if (needed_space > avail_space) {
-      DPA_DEBUG("Unable to send, need %u bytes, got %u free bytes instead\n", needed_space, avail_space);
-      break;
+    err = try_send(head);
+    if (err != -FI_EAGAIN) {
+      // move to free queue
+      slist_remove_head_unsafe(queue);
+      slist_insert_head_unsafe(&head->list_entry, &(send_info->free_entries));
     }
-    //actually write the message on remote buffer.
-    write_msg(send_info, head, avail_space-needed_space);
-    if (ep->send_cq) {
-      // generate completion
-      struct fi_cq_err_entry completion = {
-        .op_context = head->context,
-        .flags = FI_MSG | FI_SEND,
-        .data = 0,
-        .err = 0
-      };
-      cq_add(ep->send_cq, &completion);
-    }
-    if (ep->send_cntr)
-      dpa_cntr_inc(ep->send_cntr);
-    
-    // move to free queue
-    slist_remove_head_unsafe(queue);
-    slist_insert_head_unsafe(&head->list_entry, &(send_info->free_entries));
   }
   unlock_if_needed(ep, queue);
 }
