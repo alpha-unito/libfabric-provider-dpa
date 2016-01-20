@@ -233,6 +233,22 @@ static inline size_t new_offset(size_t prev_offset, size_t msg_size, size_t buf_
   return (prev_offset + msg_size + offsetof(msg_data, data)) % (2*buf_size);
 }
 
+static inline void DEBUG_dump_mem(volatile uint8_t* ptr, size_t size, size_t offset) {
+#ifdef MSG_MEMORY_DUMP
+  DPA_DEBUG("Memory dump\n");
+  //ensure that remote buffer is small when using MSG_MEMORY_DUMP!!
+  //2 hex + space per byte, + newline + \0
+  char dump[size * 3 + 2];
+  for (int i = 0; i < size; i++)
+    sprintf(dump + i*3, "%02x ", ptr[i]);
+  dump[size * 3] = '\n';
+  dump[size * 3 + 1] = '\0';
+  DPA_DEBUG(dump);
+  DPA_DEBUG("Offset = %u\n\n", offset);
+#endif
+}
+  
+
 static inline size_t read_msg(msg_queue_entry* msg, ep_recv_info* recv_info) {
   local_buffer_info* buf_info = recv_info->buffer;
   volatile msg_data* read_ptr = recv_read_ptr(recv_info);
@@ -241,16 +257,9 @@ static inline size_t read_msg(msg_queue_entry* msg, ep_recv_info* recv_info) {
   size_t recv_size = msg->len;
   size_t read_size = MIN(recv_size, msg_size);
   size_t copy_size = MIN(read_size, buftop_size);
-  /*
-  printf("local memory dump\n");
-  for (int i = 0; i < recv_buffer_size(recv_info); i++){
-    uint8_t* ptr = (((uint8_t*)buf_info->base->data)+i);
-    if (ptr == (uint8_t*)read_ptr) printf("r");
-    printf("%02x ", *ptr);
-  }
-  printf("\n");
-  printf("read = %u\n\n", recv_info->read);
-  */
+  
+  DEBUG_dump_mem((volatile uint8_t*)buf_info->base->data, buf_info->size, recv_info->read);
+  
   DPA_DEBUG("Reading %u bytes, message is %u bytes\n", read_size, msg_size);
   memcpy((void*)msg->buf, (void*)read_ptr->data, copy_size);
   //clean up read buffer
@@ -350,13 +359,8 @@ static inline void write_msg(ep_send_info* send_info,
     copy_size = msg->len - buftop_size;
     memcpy((void*)recvbuf, (void*)msg->buf + buftop_size, copy_size);
   }
-  /*
-  printf("remote memory dump\n");
-  for (int i = 0; i < send_info->size; i++)
-    printf("%02x ", *(((uint8_t*)remote_buffer)+i));
-  printf("\n");
-  printf("write = %u\n\n", send_info->write);
-  */
+  DEBUG_dump_mem((uint8_t*)remote_buffer, send_info->size, send_info->write);
+  
   send_info->write = new_offset(send_info->write, msg->len, send_info->size);
 
   //TODO remote memory fence here
