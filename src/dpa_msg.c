@@ -77,7 +77,8 @@ static inline ssize_t _dpa_recv(dpa_fid_ep* ep, const void *buf, size_t len,
   };
   lock_if_needed(ep, msg_queue);
   int err = -FI_EAGAIN;
-  if (slist_empty(msg_queue))
+  // try receive if noone is trying and endpoint is connected
+  if (slist_empty(msg_queue) && ep->connected)
     err = try_recv(&entry);
     
 
