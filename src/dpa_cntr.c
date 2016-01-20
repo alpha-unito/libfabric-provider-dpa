@@ -190,7 +190,7 @@ int dpa_cntr_wait(struct fid_cntr *fid_cntr, uint64_t threshold, int timeout) {
   dpa_fid_cntr* cntr = container_of(fid_cntr, dpa_fid_cntr, cntr);
   struct fi_ops_cntr* ops = cntr->cntr.ops;
   int err = ops->readerr(fid_cntr);
-  while(timeout > 0 && ops->read(fid_cntr) < threshold
+  while(timeout != 0 && ops->read(fid_cntr) < threshold
         && ops->readerr(fid_cntr) == err)
     timeout = make_queue_progress(&cntr->progress, timeout);
   return (timeout == 0 && cntr->counter < threshold)
