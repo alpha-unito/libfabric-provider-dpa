@@ -342,8 +342,7 @@ inline void process_recv_queue(dpa_fid_ep* ep, uint8_t locked) {
   unlock_if_needed(ep, queue);
 }
 
-static inline void write_msg(ep_send_info* send_info,
-                             msg_queue_entry* msg, size_t space_after) {
+static inline void write_msg(ep_send_info* send_info, msg_queue_entry* msg) {
   volatile void* remote_buffer = send_info->remote_buffer;
   volatile msg_data* data = send_write_ptr(send_info);
   volatile void* recvbuf = data->data;
@@ -363,7 +362,8 @@ static inline void write_msg(ep_send_info* send_info,
   
   send_info->write = new_offset(send_info->write, msg->len, send_info->size);
 
-  //TODO remote memory fence here
+  // flush as a barrier before writing length
+  DPAFlush(send_info->sequence, DPA_FLAG_FLUSH_CPU_BUFFERS_ONLY);
   data->size = msg->len;
 
   DPA_DEBUG("Triggering remote interrupt\n");
@@ -394,7 +394,7 @@ int try_send(msg_queue_entry* entry) {
     return -FI_EAGAIN;
   }
   //actually write the message on remote buffer.
-  write_msg(send_info, entry, avail_space-needed_space);
+  write_msg(send_info, entry);
   if (entry->ep->send_cq) {
     // generate completion
     struct fi_cq_err_entry completion = {

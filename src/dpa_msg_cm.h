@@ -101,6 +101,7 @@ struct ep_send_info {
   dpa_desc_t sd;
   dpa_remote_segment_t remote_segment;
   dpa_map_t remoteMap;
+  dpa_sequence_t sequence;
   volatile void* remote_buffer;
   dpa_local_interrupt_t interrupt;
   dpa_remote_interrupt_t remote_interrupt;

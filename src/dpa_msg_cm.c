@@ -296,6 +296,14 @@ dpa_error_t connect_msg(dpa_fid_ep* ep, segment_data remote_segment_data) {
                                                         NULL, NO_FLAGS, &error);
   DPALIB_CHECK_ERROR(DPAMapRemoteSegment, goto conn_end);
   
+  DPA_DEBUG("Creating send sequence\n");
+  DPACreateMapSequence(ep->msg_send_info.remoteMap, &ep->msg_send_info.sequence, DPA_FLAG_FAST_BARRIER, &error);
+  DPALIB_CHECK_ERROR(DPACreateMapSequence, goto conn_end);
+  dpa_sequence_status_t status;
+  do {
+    status = DPAStartSequence(ep->msg_send_info.sequence, NO_FLAGS, &error);
+  } while (status != DPA_SEQ_OK);
+  
   DPA_DEBUG("Saving remote segment data\n");
   ep->msg_send_info.write = 0;
   ep->msg_send_info.size = remote_segment_data.size - offsetof(buffer_status, data);
@@ -315,16 +323,21 @@ dpa_error_t connect_msg(dpa_fid_ep* ep, segment_data remote_segment_data) {
 
 dpa_error_t disconnect_msg(dpa_fid_ep* ep) {
   dpa_error_t error, result = DPA_ERR_OK;
-  if (ep->msg_send_info.remote_segment) {
-    DPA_DEBUG("Disconnecting from remote recv segment\n");
-    DPADisconnectSegment(ep->msg_send_info.remote_segment, NO_FLAGS, &error);
-    DPALIB_CHECK_ERROR(DPADisconnectSegment, result = error);
+  if (ep->msg_send_info.sequence) {
+    DPA_DEBUG("Unmapping remote recv segment\n");
+    DPARemoveSequence(ep->msg_send_info.sequence, NO_FLAGS, &error);
+    DPALIB_CHECK_ERROR(DPAUnmapSegment, result = error);
   }
   if (ep->msg_send_info.remoteMap) {
     DPA_DEBUG("Unmapping remote recv segment\n");
     DPAUnmapSegment(ep->msg_send_info.remoteMap, NO_FLAGS, &error);
     DPALIB_CHECK_ERROR(DPAUnmapSegment, result = error);
-  }    
+  }
+  if (ep->msg_send_info.remote_segment) {
+    DPA_DEBUG("Disconnecting from remote recv segment\n");
+    DPADisconnectSegment(ep->msg_send_info.remote_segment, NO_FLAGS, &error);
+    DPALIB_CHECK_ERROR(DPADisconnectSegment, result = error);
+  }
   if (ep->msg_send_info.remote_interrupt) {
     DPA_DEBUG("Disconnecting from remote recv interrupt\n");
     DPADisconnectInterrupt(ep->msg_send_info.remote_interrupt, NO_FLAGS, &error);
