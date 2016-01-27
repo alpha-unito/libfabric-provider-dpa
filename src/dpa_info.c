@@ -44,7 +44,7 @@ static dpa_addr_t* resolvename(const char* node, const char *service);
 
 EXTERN_ENV_CONST(size_t, BUFFER_SIZE);
 #include "dpa_msg_cm.h"
-#define DPA_MAX_MSG_SIZE (BUFFER_SIZE - offsetof(buffer_status, data))
+#define DPA_MAX_MSG_SIZE (ALIGNED_BUFFER_SIZE - offsetof(buffer_status, data))
 
 /**
  * Get information about dpa provider capabilities

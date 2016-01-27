@@ -49,6 +49,10 @@ typedef struct msg_queue_ptr_entry msg_queue_ptr_entry;
 #include "fi_ext_dpa.h"
 #include "dpa_cm.h"
 
+#define BUFFER_WORD offsetof(msg_data, data)
+#define BUFFER_WORD_ALIGN(size) (((size) / BUFFER_WORD) * BUFFER_WORD)
+#define ALIGNED_BUFFER_SIZE BUFFER_WORD_ALIGN(BUFFER_SIZE)
+
 struct segment_data {
   dpa_segmid_t segmentId;
   size_t offset;
@@ -69,7 +73,7 @@ struct buffer_status {
 };
 
 struct msg_data {
-  size_t size;
+  uint64_t size;
   char data[0];
 };
 

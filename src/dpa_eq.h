@@ -55,6 +55,7 @@ static inline void queue_interrupt_init(queue_interrupt* interrupt) {
 }
 
 static inline dpa_error_t wait_interrupt(queue_interrupt* interrupt, int timeout) {
+  return FI_SUCCESS;
   if (!interrupt->handle) return FI_SUCCESS;
   DPA_DEBUG("Wait for queue interrupt\n");
   dpa_error_t error;

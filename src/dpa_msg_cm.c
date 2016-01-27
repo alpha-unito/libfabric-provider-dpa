@@ -56,7 +56,8 @@ DEFINE_ENV_CONST(dpa_segmid_t, MAX_MSG_SEGMID, MAX_MSG_SEGMID_DEFAULT);
 #define NUM_SEGMENTS (MAX_MSG_SEGMID - MIN_MSG_SEGMID)
 #define MAX_PEERS (NUM_SEGMENTS * BUFFERS_PER_SEGMENT)
 #define CONTROL_SEGMENT_SIZE (MAX_PEERS*sizeof(struct control_data))
-#define DATA_SEGMENT_SIZE (BUFFER_SIZE * BUFFERS_PER_SEGMENT)
+// integer division and multiplication align buffer size to buffer word
+#define DATA_SEGMENT_SIZE (ALIGNED_BUFFER_SIZE * BUFFERS_PER_SEGMENT)
 
 struct assign_data assign_data;
 
@@ -91,7 +92,7 @@ static inline void create_data_segment(msg_local_segment_info *info) {
   info->bufcount = 0;
   info->buffers = calloc(BUFFERS_PER_SEGMENT, sizeof(local_buffer_info));
   for (int i = 0; i < BUFFERS_PER_SEGMENT; i++) {
-    info->buffers[i].base = info->segment_info.base + i * BUFFER_SIZE;
+    info->buffers[i].base = info->segment_info.base + i * ALIGNED_BUFFER_SIZE;
     info->buffers[i].segment = info;
   }
   assign_data.currentSegmentId++;
@@ -148,7 +149,7 @@ static inline volatile dpa_error_t alloc_msg_buffer(dpa_fid_ep* ep, volatile seg
                      ep, interrupt_flags, &error);
   DPALIB_CHECK_ERROR(DPACreateInterrupt, goto alloc_sendclose);
   //reserve buffer
-  empty_buffer->size = BUFFER_SIZE;
+  empty_buffer->size = ALIGNED_BUFFER_SIZE;
   //clean buffer before making available
   empty_buffer->base->read = 0;
   ep->msg_recv_info.buffer = empty_buffer;

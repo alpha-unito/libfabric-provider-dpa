@@ -228,9 +228,13 @@ static inline size_t split_buffer(volatile buffer_status* base, size_t buffer_si
 */
 
 static inline size_t new_offset(size_t prev_offset, size_t msg_size, size_t buf_size) {
-  /* 2*buf_size accomodates for page info, so when writer wraps buffer 
+  /* to previous offset we add msg_size + BUFFER_WORD (to store the size itself)
+   * + (offset-1) to always round up at the next BUFFER_WORD */
+  uint64_t new_offset = prev_offset + msg_size + BUFFER_WORD + (BUFFER_WORD-1);
+  /* align to BUFFER_WORD using integer division and multiplication.
+   * 2*buf_size accomodates for page info, so when writer wraps buffer 
    * knows if receiver has done so as well */
-  return (prev_offset + msg_size + offsetof(msg_data, data)) % (2*buf_size);
+  return BUFFER_WORD_ALIGN(new_offset) % (2*buf_size);
 }
 
 static inline void DEBUG_dump_mem(volatile uint8_t* ptr, size_t size, size_t offset) {
@@ -274,11 +278,11 @@ static inline size_t read_msg(msg_queue_entry* msg, ep_recv_info* recv_info) {
   recv_info->read = new_offset(recv_info->read, msg_size, recv_buffer_size(recv_info));
   // write remote status
   recv_info->remote_status->read = recv_info->read;
-
+  /*
   DPA_DEBUG("Triggering remote interrupt\n");
   dpa_error_t nocheck;
   DPATriggerInterrupt(recv_info->remote_interrupt, NO_FLAGS, &nocheck);
-
+  */
   return read_size;
 }
 
@@ -366,9 +370,11 @@ static inline void write_msg(ep_send_info* send_info, msg_queue_entry* msg) {
   DPAFlush(send_info->sequence, DPA_FLAG_FLUSH_CPU_BUFFERS_ONLY);
   data->size = msg->len;
 
+  DPAFlush(send_info->sequence, DPA_FLAG_FLUSH_CPU_BUFFERS_ONLY);
+  /*
   DPA_DEBUG("Triggering remote interrupt\n");
   dpa_error_t nocheck;
-  DPATriggerInterrupt(send_info->remote_interrupt, NO_FLAGS, &nocheck);
+  DPATriggerInterrupt(send_info->remote_interrupt, NO_FLAGS, &nocheck);*/
 }
 
 static inline size_t remote_space(ep_send_info* send_info) {
@@ -439,12 +445,12 @@ static inline int progress_queue(dpa_fid_ep* ep, dpa_local_interrupt_t interrupt
                           int timeout_millis, process_queue_t process_queue) {
   timeout_millis = timeout_millis < 0 ? DPA_INFINITE_TIMEOUT : timeout_millis;
   if (timeout_millis) {
-    dpa_error_t error;
-    DPAWaitForInterrupt(interrupt, timeout_millis, NO_FLAGS, &error);
+    dpa_error_t error = DPA_ERR_OK;
+    //DPAWaitForInterrupt(interrupt, timeout_millis, NO_FLAGS, &error);
     // avoid logging errors for timeout
     if (error == DPA_ERR_TIMEOUT)
       timeout_millis = 0;
-    else
+    else if (error != DPA_ERR_OK)
       DPALIB_CHECK_ERROR(DPAWaitForLocalSegmentEvent, return 0);
   }
   process_queue(ep, 0);
