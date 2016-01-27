@@ -78,7 +78,8 @@ static inline int make_queue_progress(queue_progress* progress, int timeout) {
   if (progress->func) {
     DPA_DEBUG("Enforcing queue progress\n");
     return progress->func(progress->arg, timeout);
-  }
+  } else
+	DPA_DEBUG("No progress function available\n");
   return timeout;
 }
 
