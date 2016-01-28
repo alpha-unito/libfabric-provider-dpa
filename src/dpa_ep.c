@@ -241,8 +241,7 @@ int dpa_passive_ep_open(struct fid_fabric *fabric, struct fi_info *info,
       .eq = NULL,
       .control_info = {
         .segmentId = src_addr.segmentId,
-      },
-      .control_index = 0,
+      }
     });
   fastlock_init(&pep_priv->lock);
   *pep = &pep_priv->pep;

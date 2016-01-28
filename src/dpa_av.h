@@ -44,7 +44,6 @@ struct dpa_fid_av {
   dpa_fid_domain* domain;
   int type;
   dpa_addr_t* table;
-  size_t count;
   size_t last;
 };
 
