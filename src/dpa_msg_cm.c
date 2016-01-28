@@ -138,26 +138,38 @@ static inline volatile dpa_error_t alloc_msg_buffer(dpa_fid_ep* ep, volatile seg
     DPA_DEBUG("Opening recv virtual device\n");
     DPAOpen(&ep->msg_recv_info.sd, NO_FLAGS, &error);
     DPALIB_CHECK_ERROR(DPAOpen, goto alloc_fail);
-  
-    DPA_DEBUG("Creating recv interrupt\n");
-    DPACreateInterrupt(ep->msg_recv_info.sd,
-                       &ep->msg_recv_info.interrupt, localAdapterNo,
-                       (dpa_intid_t*)&(local_segment_data->recvInterruptId),
-                       process_recv_queue_interrupt_callback,
-                       ep, interrupt_flags, &error);
-    DPALIB_CHECK_ERROR(DPACreateInterrupt, goto alloc_recvclose);
+
+    if (ep->domain->data_progress == FI_PROGRESS_AUTO ||
+        (ep->recv_cq && ep->recv_cq->wait_obj == FI_WAIT_UNSPEC) ||
+        (ep->recv_cntr && ep->recv_cntr->wait_obj == FI_WAIT_UNSPEC)) {
+      DPA_DEBUG("Creating recv interrupt\n");
+      DPACreateInterrupt(ep->msg_recv_info.sd,
+                         &ep->msg_recv_info.interrupt, localAdapterNo,
+                         (dpa_intid_t*)&(local_segment_data->recvInterruptId),
+                         process_recv_queue_interrupt_callback,
+                         ep, interrupt_flags, &error);
+      DPALIB_CHECK_ERROR(DPACreateInterrupt, goto alloc_recvclose);
+      local_segment_data->hasRecvInterrupt = 1;
+    } else
+      local_segment_data->hasRecvInterrupt = 0;
   }
   if (ep->caps & FI_SEND) {
     DPA_DEBUG("Opening send virtual device\n");
     DPAOpen(&ep->msg_send_info.sd, NO_FLAGS, &error);
     DPALIB_CHECK_ERROR(DPAOpen, goto alloc_remrecvint);
-    DPA_DEBUG("Creating send interrupt\n");
-    DPACreateInterrupt(ep->msg_send_info.sd,
-                       &ep->msg_send_info.interrupt, localAdapterNo,
-                       (dpa_intid_t*)&(local_segment_data->sendInterruptId),
-                       process_send_queue_interrupt_callback,
-                       ep, interrupt_flags, &error);
-    DPALIB_CHECK_ERROR(DPACreateInterrupt, goto alloc_sendclose);
+    
+    if (ep->domain->data_progress == FI_PROGRESS_AUTO ||
+        (ep->recv_cq && ep->send_cq->wait_obj == FI_WAIT_UNSPEC) ||
+        (ep->recv_cntr && ep->send_cntr->wait_obj == FI_WAIT_UNSPEC)) {
+      DPA_DEBUG("Creating send interrupt\n");
+      DPACreateInterrupt(ep->msg_send_info.sd,
+                         &ep->msg_send_info.interrupt, localAdapterNo,
+                         (dpa_intid_t*)&(local_segment_data->sendInterruptId),
+                         process_send_queue_interrupt_callback,
+                         ep, interrupt_flags, &error);
+      local_segment_data->hasSendInterrupt = 1;
+    } else
+      local_segment_data->hasSendInterrupt = 0;
   }
   //reserve buffer
   empty_buffer->size = ALIGNED_BUFFER_SIZE;
@@ -171,7 +183,6 @@ static inline volatile dpa_error_t alloc_msg_buffer(dpa_fid_ep* ep, volatile seg
   //set metadata
   local_segment_data->segmentId = empty_buffer->segment->segment_info.segmentId;
   local_segment_data->offset = (size_t) (((void*) empty_buffer->base) - segment_base);
-  // TODO memory fence here
   local_segment_data->size = empty_buffer->size;
   return DPA_ERR_OK;
         
@@ -327,7 +338,7 @@ dpa_error_t connect_msg(dpa_fid_ep* ep, segment_data remote_segment_data) {
     ep->msg_recv_info.remote_status = remote_status;
   }
   
-  if (ep->caps & FI_SEND) {
+  if (ep->caps & FI_SEND && remote_segment_data.hasRecvInterrupt) {
     DPA_DEBUG("Connecting to remote recv interrupt %u on node %u\n", 
               remote_segment_data.recvInterruptId, ep->peer_addr.nodeId);
     DPAConnectInterrupt(ep->msg_send_info.sd,
@@ -336,16 +347,16 @@ dpa_error_t connect_msg(dpa_fid_ep* ep, segment_data remote_segment_data) {
                         remote_segment_data.recvInterruptId,
                         DPA_INFINITE_TIMEOUT, NO_FLAGS, &error);
     DPALIB_CHECK_ERROR(DPAConnectInterrupt, goto conn_end);
-  }
+  } else ep->msg_send_info.remote_interrupt = NULL;
 
-  if (ep->caps & FI_RECV) {
+  if (ep->caps & FI_RECV && remote_segment_data.hasSendInterrupt) {
     DPA_DEBUG("Connecting to remote send interrupt %u on node %u\n", 
               remote_segment_data.sendInterruptId, ep->peer_addr.nodeId);
     DPAConnectInterrupt(ep->msg_recv_info.sd, &ep->msg_recv_info.remote_interrupt,
                         ep->peer_addr.nodeId, localAdapterNo, remote_segment_data.sendInterruptId,
                         DPA_INFINITE_TIMEOUT, NO_FLAGS, &error);
     DPALIB_CHECK_ERROR(DPAConnectInterrupt, goto conn_end);
-  }
+  } else ep->msg_recv_info.remote_interrupt = NULL;
 
   DPA_DEBUG("Adding CONNECTED event to event queue\n");
   struct fi_eq_cm_entry event = {

@@ -55,9 +55,11 @@ typedef struct msg_queue_ptr_entry msg_queue_ptr_entry;
 
 struct segment_data {
   dpa_segmid_t segmentId;
-  size_t offset;
-  size_t size;
+  uint64_t offset;
+  uint64_t size;
+  uint8_t hasRecvInterrupt;
   dpa_intid_t recvInterruptId;
+  uint64_t hasSendInterrupt;
   dpa_intid_t sendInterruptId;
 };
 

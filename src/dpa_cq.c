@@ -123,7 +123,8 @@ int dpa_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr, struct fid_c
       },
       .entry_size = entry_size,
       .domain = container_of(domain, dpa_fid_domain, domain),
-    });
+      .wait_obj = attr->wait_obj,
+  });
 
   queue_progress_init(&cq_priv->progress);
   queue_interrupt_init(&cq_priv->interrupt);

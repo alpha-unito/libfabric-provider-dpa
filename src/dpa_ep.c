@@ -293,6 +293,8 @@ static int dpa_ep_bind(struct fid *fid, struct fid *bfid, uint64_t flags){
   if (!bfid) return -FI_EINVAL;
 
   dpa_fid_ep* ep = container_of(fid, dpa_fid_ep, ep.fid);
+  if (ep->connected) return -FI_EISCONN;
+
   switch (bfid->fclass) {
   case FI_CLASS_EQ:
     DPA_DEBUG("Binding event queue to endpoint\n");

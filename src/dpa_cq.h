@@ -52,6 +52,7 @@ struct dpa_fid_cq {
   struct slist free_list;
   queue_interrupt interrupt;
   queue_progress progress;
+  enum fi_wait_obj wait_obj;
 };
 
 struct dpa_cq_event {

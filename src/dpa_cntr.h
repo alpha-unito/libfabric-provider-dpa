@@ -64,6 +64,7 @@ struct dpa_fid_cntr {
   atomic_t counter_atomic;
   atomic_t err_atomic;
   queue_progress progress;
+  enum fi_wait_obj wait_obj;
 };
 
 int dpa_cntr_open(struct fid_domain *domain, struct fi_cntr_attr *attr,

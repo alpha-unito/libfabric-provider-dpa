@@ -106,6 +106,7 @@ int dpa_cntr_open(struct fid_domain *domain, struct fi_cntr_attr *attr,
         }
       },
       .domain = domain_priv,
+      .wait_obj = attr ? attr->wait_obj : FI_WAIT_UNSPEC,
   });
         
   cntr_priv->cntr.fid.fclass = FI_CLASS_CNTR;
