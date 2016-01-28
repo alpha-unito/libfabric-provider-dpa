@@ -278,11 +278,11 @@ static inline size_t read_msg(msg_queue_entry* msg, ep_recv_info* recv_info) {
   recv_info->read = new_offset(recv_info->read, msg_size, recv_buffer_size(recv_info));
   // write remote status
   recv_info->remote_status->read = recv_info->read;
-  /*
-  DPA_DEBUG("Triggering remote interrupt\n");
-  dpa_error_t nocheck;
-  DPATriggerInterrupt(recv_info->remote_interrupt, NO_FLAGS, &nocheck);
-  */
+  if (recv_info->remote_interrupt) {
+    DPA_DEBUG("Triggering remote interrupt\n");
+    dpa_error_t nocheck;
+    DPATriggerInterrupt(recv_info->remote_interrupt, NO_FLAGS, &nocheck);
+  }
   return read_size;
 }
 
@@ -366,15 +366,18 @@ static inline void write_msg(ep_send_info* send_info, msg_queue_entry* msg) {
   
   send_info->write = new_offset(send_info->write, msg->len, send_info->size);
 
-  // flush as a barrier before writing length
-  DPAFlush(send_info->sequence, DPA_FLAG_FLUSH_CPU_BUFFERS_ONLY);
+  // barrier before writing length
+  dpa_barrier(send_info->sequence);
   data->size = msg->len;
 
-  DPAFlush(send_info->sequence, DPA_FLAG_FLUSH_CPU_BUFFERS_ONLY);
-  /*
-  DPA_DEBUG("Triggering remote interrupt\n");
-  dpa_error_t nocheck;
-  DPATriggerInterrupt(send_info->remote_interrupt, NO_FLAGS, &nocheck);*/
+  // complete operation
+  dpa_barrier(send_info->sequence);
+
+  if (send_info->remote_interrupt) {
+    DPA_DEBUG("Triggering remote interrupt\n");
+    dpa_error_t nocheck;
+    DPATriggerInterrupt(send_info->remote_interrupt, NO_FLAGS, &nocheck);
+  }
 }
 
 static inline size_t remote_space(ep_send_info* send_info) {

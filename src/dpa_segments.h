@@ -110,4 +110,29 @@ static inline dpa_error_t dpa_destroy_segment(local_segment_info info) {
   
   return error;
 }
+
+static inline dpa_sequence_t create_start_sequence(dpa_map_t map) {
+  dpa_sequence_t sequence; dpa_error_t error;
+  DPA_DEBUG("Creating sequence\n");
+  DPACreateMapSequence(map, &sequence, DPA_FLAG_FAST_BARRIER, &error);
+  DPALIB_CHECK_ERROR(DPACreateMapSequence, return NULL);
+  dpa_sequence_status_t status;
+  do {
+    status = DPAStartSequence(sequence, NO_FLAGS, &error);
+  } while (status != DPA_SEQ_OK);
+  return sequence;
+}
+
+static inline void dpa_barrier(dpa_sequence_t sequence) {
+  if (!sequence) return;
+  DPAFlush(sequence, DPA_FLAG_FLUSH_CPU_BUFFERS_ONLY);
+}
+
+static inline void remove_sequence(dpa_sequence_t sequence) {
+  if (!sequence) return;
+  dpa_error_t error;
+  DPA_DEBUG("Removing sequence\n");
+  DPARemoveSequence(sequence, NO_FLAGS, &error);
+  DPALIB_CHECK_ERROR(DPARemoveSequence, );
+}
 #endif

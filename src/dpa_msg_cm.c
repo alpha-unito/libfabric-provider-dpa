@@ -201,14 +201,11 @@ volatile control_data* write_msg_accept_data(dpa_fid_ep* ep) {
         volatile control_data* ctrlseg = (volatile control_data*) ep->pep->control_info.base;
         result = get_empty_control_data(ctrlseg, MAX_CONCUR_CONN);
         volatile segment_data* local_segment_data = &result->local_segment_data;
-        dpa_sequence_t sequence; dpa_error_t error;
-        DPACreateMapSequence(ep->pep->control_info.map, &sequence, NO_FLAGS, &error);
-        DPALIB_CHECK_ERROR(DPACreateMapSequence, );
-        if (error == DPA_ERR_OK)
-          error = alloc_msg_buffer(ep, local_segment_data);
+        dpa_sequence_t sequence = create_start_sequence(ep->pep->control_info.map);
+        dpa_error_t error = alloc_msg_buffer(ep, local_segment_data);
         if (error == DPA_ERR_OK) {
           result->nodeId = ep->peer_addr.nodeId;
-          DPAFlush(sequence, NO_FLAGS);
+          dpa_barrier(sequence);
           /* status MUST be set AFTER all other metadata, 
            * so that when remote node reads this it can be
            * sure everything else is already there.*/
@@ -216,7 +213,7 @@ volatile control_data* write_msg_accept_data(dpa_fid_ep* ep) {
           print_control_data(result);
         }
         else result = NULL;
-        if (sequence) DPARemoveSequence(sequence, NO_FLAGS, &error);
+        remove_sequence(sequence);
       }));
   return result;
 }
@@ -275,17 +272,24 @@ dpa_error_t ctrl_connect_msg(dpa_fid_ep* ep, volatile segment_data* remote_segme
                                                                    0, ctrl_seg_size,
                                                                    NULL, NO_FLAGS, &error);
   DPALIB_CHECK_ERROR(DPAMapRemoteSegment, goto ctrl_disconnect);
+
+  dpa_sequence_t sequence = create_start_sequence(remoteControlMap);
+  
   DPA_DEBUG("Looking for current node segment data on remote\n");
   size_t count = ctrl_seg_size / sizeof(control_data);
   volatile control_data* control_data = get_conn_data(remote_ctrl_segment, count);
   //this should be done atomically with a test&set operation, when hardware will support.
   control_data->status = CTRLSTATUS_TAKEN;
+  dpa_barrier(sequence);
   
   DPA_DEBUG("Fetching remote segment data for current node\n");
   *remote_segment_data = control_data->local_segment_data;
   error = alloc_msg_buffer(ep, &control_data->remote_segment_data);
   control_data->status = CTRLSTATUS_REPLIED;
+  dpa_barrier(sequence);
   print_control_data(control_data);
+
+  remove_sequence(sequence);
  ctrl_unmap:
   DPAUnmapSegment(remoteControlMap, NO_FLAGS, &nocheck);
  ctrl_disconnect:
@@ -314,14 +318,8 @@ dpa_error_t connect_msg(dpa_fid_ep* ep, segment_data remote_segment_data) {
                                                                 remote_segment_data.size,
                                                                 NULL, NO_FLAGS, &error);
     DPALIB_CHECK_ERROR(DPAMapRemoteSegment, goto conn_end);
-    DPA_DEBUG("Creating send sequence\n");
-    DPACreateMapSequence(ep->msg_send_info.remoteMap, &ep->msg_send_info.sequence, DPA_FLAG_FAST_BARRIER, &error);
-    DPALIB_CHECK_ERROR(DPACreateMapSequence, goto conn_end);
-    dpa_sequence_status_t status;
-    do {
-      status = DPAStartSequence(ep->msg_send_info.sequence, NO_FLAGS, &error);
-    } while (status != DPA_SEQ_OK);
-  
+    ep->msg_send_info.sequence = create_start_sequence(ep->msg_send_info.remoteMap);
+ 
     DPA_DEBUG("Saving remote segment data\n");
     ep->msg_send_info.write = 0;
     ep->msg_send_info.size = remote_segment_data.size - offsetof(buffer_status, data);
@@ -362,11 +360,7 @@ dpa_error_t connect_msg(dpa_fid_ep* ep, segment_data remote_segment_data) {
 
 dpa_error_t disconnect_msg(dpa_fid_ep* ep) {
   dpa_error_t error, result = DPA_ERR_OK;
-  if (ep->msg_send_info.sequence) {
-    DPA_DEBUG("Removing remote sequence\n");
-    DPARemoveSequence(ep->msg_send_info.sequence, NO_FLAGS, &error);
-    DPALIB_CHECK_ERROR(DPAUnmapSegment, result = error);
-  }
+  remove_sequence(ep->msg_send_info.sequence);
   if (ep->msg_send_info.remoteMap) {
     DPA_DEBUG("Unmapping remote recv segment\n");
     DPAUnmapSegment(ep->msg_send_info.remoteMap, NO_FLAGS, &error);
