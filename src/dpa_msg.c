@@ -443,10 +443,8 @@ void process_send_queue(dpa_fid_ep* ep, uint8_t locked) {
 
 static inline int progress_queue(dpa_fid_ep* ep, dpa_local_interrupt_t interrupt,
                           int timeout_millis, process_queue_t process_queue) {
-  timeout_millis = timeout_millis < 0 ? DPA_INFINITE_TIMEOUT : timeout_millis;
   if (timeout_millis) {
-    dpa_error_t error = DPA_ERR_OK;
-    //DPAWaitForInterrupt(interrupt, timeout_millis, NO_FLAGS, &error);
+    dpa_error_t error = wait_interrupt(interrupt, timeout_millis);
     // avoid logging errors for timeout
     if (error == DPA_ERR_TIMEOUT)
       timeout_millis = 0;

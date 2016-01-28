@@ -54,12 +54,11 @@ static inline void queue_interrupt_init(queue_interrupt* interrupt) {
   interrupt->sd = NULL;
 }
 
-static inline dpa_error_t wait_interrupt(queue_interrupt* interrupt, int timeout) {
-  return FI_SUCCESS;
-  if (!interrupt->handle) return FI_SUCCESS;
+static inline dpa_error_t wait_interrupt(dpa_local_interrupt_t interrupt, int timeout) {
+  if (!interrupt) return FI_SUCCESS;
   DPA_DEBUG("Wait for queue interrupt\n");
   dpa_error_t error;
-  DPAWaitForInterrupt(interrupt->handle, timeout < 0 ? DPA_INFINITE_TIMEOUT : timeout, NO_FLAGS, &error);
+  DPAWaitForInterrupt(interrupt, timeout < 0 ? DPA_INFINITE_TIMEOUT : timeout, NO_FLAGS, &error);
   if (error != DPA_ERR_OK && error != DPA_ERR_TIMEOUT)
       DPALIB_CHECK_ERROR(DPAWaitForInterrupt, );
   return error;

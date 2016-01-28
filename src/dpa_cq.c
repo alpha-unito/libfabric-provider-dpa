@@ -309,7 +309,7 @@ static int dpa_cq_wait_data(struct fid_cq* cq, uint64_t* data, uint64_t flags) {
 static inline void wait_cq_interrupt(dpa_fid_cq* cq, int timeout) {
   if (!cq->interrupt.handle) return;
   DPA_DEBUG("Wait for completion queue interrupt\n");
-  dpa_error_t error = wait_interrupt(&cq->interrupt, timeout);
+  dpa_error_t error = wait_interrupt(cq->interrupt.handle, timeout);
   if (error != DPA_ERR_OK) return;
   struct fi_cq_err_entry entry = {
     .op_context = NULL,
