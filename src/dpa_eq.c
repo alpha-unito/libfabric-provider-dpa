@@ -152,28 +152,33 @@ static ssize_t dpa_eq_readerr(struct fid_eq *eq, struct fi_eq_err_entry *buf,
   size_t size = sizeof(struct fi_eq_err_entry);
   return eq_read_priv(eq_priv, &eq_priv->error_queue, buf, size, NULL, flags);
 }
-  
+
+static inline ssize_t _read_or_err(dpa_fid_eq* eq, uint32_t *event,
+                            void *buf, size_t len, int timeout, uint64_t flags) {
+    if (!slist_empty(&eq->error_queue)) {
+      DPA_DEBUG("Error queue not empty\n");
+      return -FI_EAVAIL;
+    }
+    return eq_read_priv(eq, &eq->event_queue, buf, len, event, flags);
+}
+
 static ssize_t dpa_eq_sread(struct fid_eq *eq, uint32_t *event,
                             void *buf, size_t len, int timeout, uint64_t flags) {
   dpa_fid_eq* eq_priv = container_of(eq, dpa_fid_eq, eq);
   ssize_t result = 0;
-  do {
-    make_queue_progress(&eq_priv->progress, 0);
-    if (!slist_empty(&eq_priv->error_queue)) {
-      DPA_DEBUG("Error queue not empty\n");
-      return -FI_EAVAIL;
+  make_queue_progress(&eq_priv->progress, 0);
+  result = _read_or_err(eq_priv, event, buf, len, timeout, flags);
+  if (result == -FI_EAGAIN) {
+    if (!eq_priv->progress.func && timeout) {
+      // with automatic progress wait until progress happens
+      LIST_SAFE(&eq_priv->event_queue, ({
+            fastlock_wait_timeout(&eq_priv->cond, &eq_priv->event_queue.lock, timeout);
+          }));
+    } else {
+      make_queue_progress(&eq_priv->progress, timeout);
     }
     result = eq_read_priv(eq_priv, &eq_priv->event_queue, buf, len, event, flags);
-    if (result == -FI_EAGAIN) {
-      make_queue_progress(&eq_priv->progress, timeout);
-      // with automatic progress wait until progress happens
-      if (!eq_priv->progress.func && timeout) {
-        LIST_SAFE(&eq_priv->event_queue, ({
-              fastlock_wait_timeout(&eq_priv->cond, &eq_priv->event_queue.lock, timeout);
-            }));
-      }
-    }
-  } while(timeout > 0);
+  }
   return result;
 }
  
