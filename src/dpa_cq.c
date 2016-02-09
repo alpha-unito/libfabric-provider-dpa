@@ -249,6 +249,7 @@ static ssize_t dpa_cq_sread(struct fid_cq *cq, void *buf, size_t count, const vo
 }
 static inline void make_cq_progress(dpa_fid_cq* cq, int timeout);
 static inline ssize_t dpa_cq_sreadfrom(struct fid_cq *cq, void *buf, size_t count, fi_addr_t *src_addr, const void *cond, int timeout){
+  DPA_DEBUG("Reading from completion queue with timeout %d\n", timeout);
   dpa_fid_cq* cq_priv = container_of(cq, dpa_fid_cq, cq);
 
   //start with immediate progress
@@ -262,6 +263,9 @@ static inline ssize_t dpa_cq_sreadfrom(struct fid_cq *cq, void *buf, size_t coun
       make_cq_progress(cq_priv, timeout);
     else
       cq_wait(cq_priv, timeout);
+
+    result = cq_read_priv(cq_priv, &cq_priv->event_queue,
+                          cq_priv->entry_size, buf, src_addr, count);
   }
 
   return result;

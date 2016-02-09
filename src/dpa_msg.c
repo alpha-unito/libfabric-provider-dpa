@@ -289,7 +289,10 @@ static inline size_t read_msg(msg_queue_entry* msg, ep_recv_info* recv_info) {
 static inline int try_recv(msg_queue_entry* entry) {
   dpa_fid_ep* ep = entry->ep;
   size_t msg_size = recv_read_ptr(&ep->msg_recv_info)->size;
-  if (msg_size<=0) return -FI_EAGAIN;
+  if (msg_size<=0) {
+    DPA_DEBUG("Nothing to receive\n");
+    return -FI_EAGAIN;
+  }
   size_t copied = read_msg(entry, &ep->msg_recv_info);
   DPA_DEBUG("received msg size: %u, buffer size: %u, copied: %u\n",
             msg_size, entry->len, copied);

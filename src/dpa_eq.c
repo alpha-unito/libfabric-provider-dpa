@@ -164,18 +164,20 @@ static inline ssize_t _read_or_err(dpa_fid_eq* eq, uint32_t *event,
 
 static ssize_t dpa_eq_sread(struct fid_eq *eq, uint32_t *event,
                             void *buf, size_t len, int timeout, uint64_t flags) {
+  DPA_INFO("Reading from event queue with timeout %d\n", timeout);
   dpa_fid_eq* eq_priv = container_of(eq, dpa_fid_eq, eq);
   ssize_t result = 0;
   make_queue_progress(&eq_priv->progress, 0);
   result = _read_or_err(eq_priv, event, buf, len, timeout, flags);
-  if (result == -FI_EAGAIN) {
-    if (!eq_priv->progress.func && timeout) {
+  if (result == -FI_EAGAIN && timeout) {
+    DPA_INFO("Empty queue, waiting on event queue until timeout\n");
+    if (eq_priv->progress.func) {
+      make_queue_progress(&eq_priv->progress, timeout);
+    } else {
       // with automatic progress wait until progress happens
       LIST_SAFE(&eq_priv->event_queue, ({
             fastlock_wait_timeout(&eq_priv->cond, &eq_priv->event_queue.lock, timeout);
           }));
-    } else {
-      make_queue_progress(&eq_priv->progress, timeout);
     }
     result = eq_read_priv(eq_priv, &eq_priv->event_queue, buf, len, event, flags);
   }
@@ -210,7 +212,7 @@ ssize_t eq_add(dpa_fid_eq* eq, uint32_t event_num, const void* buf, size_t len, 
   
 static ssize_t dpa_eq_write(struct fid_eq *eq, uint32_t event,
                             const void *buf, size_t len, uint64_t flags) {
-  DPA_DEBUG("Adding item to event queue\n");
+  DPA_INFO("Adding item to event queue\n");
   dpa_fid_eq* eq_priv = container_of(eq, dpa_fid_eq, eq);
   return eq_add(eq_priv, event, buf, len, flags, 0);
 }
