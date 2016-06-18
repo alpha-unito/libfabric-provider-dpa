@@ -39,6 +39,7 @@
 #include <limits.h>
 #include <stdio.h>
 #include <pthread.h>
+#include <sys/uio.h>
 
 #include <dpalib_api.h>
 
