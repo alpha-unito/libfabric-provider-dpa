@@ -59,7 +59,7 @@
 #define DPA_PROVIDER_VERSION 1
 
 #define DPA_MAJOR_VERSION 1
-#define DPA_MINOR_VERSION 0
+#define DPA_MINOR_VERSION 3
 #define DPA_FI_VERSION FI_VERSION(DPA_MAJOR_VERSION, DPA_MINOR_VERSION)
 
 //in a provider specified protocol, the upper bit should be 1
