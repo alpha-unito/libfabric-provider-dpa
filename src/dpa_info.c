@@ -164,8 +164,8 @@ dpa_addr_t* resolvename(const char* node, const char *service){
   dpa_addr_t* result = calloc(1, sizeof(dpa_addr_t));
   
   if (node) {
-    dis_nodeId_list_t nodeIdList;
-    dis_adapter_type_t type;
+    a3c_nodeId_list_t nodeIdList;
+    a3c_adapter_type_t type;
     dpa_error_t error;
     DPAGetNodeIdByAdapterName((char *)node, &nodeIdList, &type, NO_FLAGS, &error);
     DPALIB_CHECK_ERROR(DPAGetNodeIdByAdapterName, return NULL);
