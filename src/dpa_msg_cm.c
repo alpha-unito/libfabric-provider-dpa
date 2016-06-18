@@ -212,11 +212,9 @@ volatile control_data* write_msg_accept_data(dpa_fid_ep* ep) {
         volatile control_data* ctrlseg = (volatile control_data*) ep->pep->control_info.base;
         result = get_empty_control_data(ctrlseg, MAX_CONCUR_CONN);
         volatile segment_data* local_segment_data = &result->local_segment_data;
-        dpa_sequence_t sequence = create_start_sequence(ep->pep->control_info.map);
         dpa_error_t error = alloc_msg_buffer(ep, local_segment_data);
         if (error == DPA_ERR_OK) {
           result->nodeId = ep->peer_addr.nodeId;
-          dpa_barrier(sequence);
           /* status MUST be set AFTER all other metadata, 
            * so that when remote node reads this it can be
            * sure everything else is already there.*/
@@ -224,7 +222,6 @@ volatile control_data* write_msg_accept_data(dpa_fid_ep* ep) {
           print_control_data(result);
         }
         else result = NULL;
-        remove_sequence(sequence);
       }));
   return result;
 }
