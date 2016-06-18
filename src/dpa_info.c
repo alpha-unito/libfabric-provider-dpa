@@ -192,7 +192,7 @@ static int dpa_verify_requirements(uint32_t version, const char *node, const cha
 
   DPA_DEBUG("check version\n");
   if (version > DPA_FI_VERSION)
-	VERIFY_FAIL_SPEC(version, DPA_FI_VERSION);
+	VERIFY_FAIL(version, DPA_FI_VERSION);
   
   if (!hints)
 	return FI_SUCCESS;
