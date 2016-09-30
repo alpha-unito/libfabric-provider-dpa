@@ -61,7 +61,7 @@ static inline fi_addr_t lookup_fi_addr(dpa_fid_av* av, dpa_addr_t* addr) {
   if (!av || !addr) return FI_ADDR_NOTAVAIL;
   for (int i = 0; i < av->last; i++)
     if (av->table[i].nodeId == addr->nodeId &&
-        av->table[i].segmentId == addr->segmentId)
+        av->table[i].connectId == addr->connectId)
       return _get_fi_addr(av, i);
   return FI_ADDR_NOTAVAIL;
 }

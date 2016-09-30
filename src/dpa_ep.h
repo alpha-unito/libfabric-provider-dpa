@@ -51,7 +51,9 @@ struct dpa_fid_pep {
   struct fi_info* info;
   dpa_fid_eq* eq;
   dpa_fid_mr* mr;
-  local_segment_info control_info;
+  dpa_desc_t sd;
+  dpa_intid_t interruptId;
+  dpa_local_data_interrupt_t interrupt;
   fastlock_t lock;
 };
 
@@ -88,6 +90,8 @@ struct dpa_fid_ep {
   slist free_entries_ptrs;
   remote_mr_cache last_remote_mr;
   dpa_addr_t peer_addr;
+  segment_data connect_data;
+  dpa_local_data_interrupt_t connect_interrupt;
   uint8_t connected;
   uint8_t lock_needed;
 };

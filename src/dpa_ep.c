@@ -155,7 +155,7 @@ int dpa_ep_open(struct fid_domain *domain, struct fi_info *info,
       .last_remote_mr = {
         .target = {
           .nodeId = 0,
-          .segmentId = 0
+          .connectId = 0
         },
         .segment = NULL,
       }
@@ -239,9 +239,7 @@ int dpa_passive_ep_open(struct fid_fabric *fabric, struct fi_info *info,
       .fabric = fabric,
       .info = fi_dupinfo(info),
       .eq = NULL,
-      .control_info = {
-        .segmentId = src_addr.segmentId,
-      }
+      .interruptId = src_addr.connectId,
     });
   fastlock_init(&pep_priv->lock);
   *pep = &pep_priv->pep;
@@ -264,7 +262,9 @@ static int dpa_pep_close(fid_t fid) {
   fastlock_destroy(&pep->lock);
   if (pep->eq)
     queue_progress_init(&pep->eq->progress);
-  dpa_destroy_segment(pep->control_info);
+  dpa_error_t error;
+  DPARemoveDataInterrupt(pep->interrupt, DPA_FLAG_EMPTY, &error);
+  DPAClose(pep->sd, DPA_FLAG_EMPTY, &error);
   fi_freeinfo(pep->info);
   free(pep);
   return 0;
@@ -384,7 +384,7 @@ static int dpa_getname(fid_t fid, void *addr, size_t *addrlen) {
   dpa_fid_ep* ep = container_of(fid, dpa_fid_ep, ep.fid);
   dpa_addr_t local_addr = {
     .nodeId = localNodeId,
-    .segmentId = (ep->pep) ? ep->pep->control_info.segmentId : 0
+    .connectId = (ep->pep) ? ep->pep->interruptId : 0
   };
   size_t copy_size = MIN(*addrlen, sizeof(dpa_addr_t));
   memcpy(addr, &local_addr, copy_size);

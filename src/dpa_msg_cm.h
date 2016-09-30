@@ -54,6 +54,8 @@ typedef struct msg_queue_ptr_entry msg_queue_ptr_entry;
 #define ALIGNED_BUFFER_SIZE BUFFER_WORD_ALIGN(BUFFER_SIZE)
 
 struct segment_data {
+  dpa_nodeid_t nodeId;
+  dpa_intid_t acceptIntId;
   dpa_segmid_t segmentId;
   uint64_t offset;
   uint64_t size;
@@ -142,9 +144,11 @@ struct msg_queue_ptr_entry {
   msg_queue_entry entries[0];
 };
 
-dpa_error_t ctrl_connect_msg(dpa_fid_ep* ep, volatile segment_data* remote_segment_data);
+dpa_error_t ctrl_connect_msg(dpa_fid_ep* ep);
 dpa_error_t connect_msg(dpa_fid_ep* ep, segment_data remote_segment_data);
 dpa_error_t disconnect_msg(dpa_fid_ep* ep);
 dpa_error_t accept_msg(dpa_fid_ep* ep);
+
+dpa_error_t alloc_send_buffer(dpa_fid_ep* ep, segment_data* local_segment_data);
 
 #endif

@@ -67,18 +67,6 @@ struct assign_data assign_data;
 msg_local_segment_info* local_segments_info;
 slist free_msg_queue_entries;
 
-void print_control_data(volatile control_data* data) {
-  DPA_DEBUG("nodeId: %u\n", data->nodeId);
-  DPA_DEBUG("local-> segmentId: %u, size: %u, offset: %u, recvint: %u, sendint: %u\n", 
-            data->local_segment_data.segmentId, data->local_segment_data.size, 
-            data->local_segment_data.offset, data->local_segment_data.recvInterruptId,
-            data->local_segment_data.sendInterruptId);
-  DPA_DEBUG("remote-> segmentId: %u, size: %u, offset: %u, recvint: %u, sendint: %u\n", 
-            data->remote_segment_data.segmentId, data->remote_segment_data.size, 
-            data->remote_segment_data.offset, data->remote_segment_data.recvInterruptId,
-            data->remote_segment_data.sendInterruptId);
-}
-
 static dpa_callback_action_t process_send_queue_interrupt_callback(void *, dpa_local_interrupt_t,
                                                                    dpa_error_t);
 static dpa_callback_action_t process_recv_queue_interrupt_callback(void *, dpa_local_interrupt_t,
@@ -119,7 +107,7 @@ static inline local_buffer_info* get_empty_buffer(){
   return NULL;
 }
 
-static inline volatile dpa_error_t alloc_msg_buffer(dpa_fid_ep* ep, volatile segment_data* local_segment_data) {
+static inline dpa_error_t alloc_msg_buffer(dpa_fid_ep* ep, segment_data* local_segment_data) {
   //msg buffer relevant for msg capable endpoints
   if (!(ep->caps & (FI_RECV | FI_SEND))) return FI_SUCCESS;
 
@@ -198,114 +186,64 @@ static inline volatile dpa_error_t alloc_msg_buffer(dpa_fid_ep* ep, volatile seg
   return error;
 }
 
-static inline volatile control_data* get_empty_control_data(volatile control_data* arr, size_t count) {
-  for(;;) {
-    for (int i = 0; i < count; i++)
-      if (arr[i].status == CTRLSTATUS_INVALID)
-        return &arr[i];
-  }
+static dpa_error_t send_connect_data(dpa_fid_ep* ep, segment_data* local_segment_data) {
+  dpa_desc_t sd;
+  dpa_error_t error;
+  DPAOpen(&sd, DPA_FLAG_EMPTY, &error);
+  DPALIB_CHECK_ERROR(DPAOpen, return error);
+  dpa_remote_data_interrupt_t interrupt;
+  DPAConnectDataInterrupt(sd, &interrupt, ep->peer_addr.nodeId,
+                          localAdapterNo, ep->peer_addr.connectId,
+                          DPA_INFINITE_TIMEOUT, DPA_FLAG_EMPTY, &error);
+  DPALIB_CHECK_ERROR(DPAConnectDataInterrupt, goto send_msg_accept_data_closesd);
+  DPATriggerDataInterrupt(interrupt, local_segment_data, sizeof(segment_data),
+                          DPA_FLAG_EMPTY, &error);
+  DPALIB_CHECK_ERROR(DPATriggerDataInterrupt, );
+
+  DPADisconnectDataInterrupt(interrupt, DPA_FLAG_EMPTY, &error);
+ send_msg_accept_data_closesd:
+  DPAClose(sd, DPA_FLAG_EMPTY, &error);
+  return error;
 }
 
-volatile control_data* write_msg_accept_data(dpa_fid_ep* ep) {
-  volatile control_data* result = NULL;
-  THREADSAFE(&ep->pep->lock, ({
-        volatile control_data* ctrlseg = (volatile control_data*) ep->pep->control_info.base;
-        result = get_empty_control_data(ctrlseg, MAX_CONCUR_CONN);
-        volatile segment_data* local_segment_data = &result->local_segment_data;
-        dpa_error_t error = alloc_msg_buffer(ep, local_segment_data);
-        if (error == DPA_ERR_OK) {
-          result->nodeId = ep->peer_addr.nodeId;
-          /* status MUST be set AFTER all other metadata, 
-           * so that when remote node reads this it can be
-           * sure everything else is already there.*/
-          result->status = CTRLSTATUS_VALID;
-          print_control_data(result);
-        }
-        else result = NULL;
-      }));
-  return result;
+dpa_error_t alloc_send_buffer(dpa_fid_ep* ep, segment_data* local_segment_data) {
+  dpa_error_t error = alloc_msg_buffer(ep, local_segment_data);
+  if (error != DPA_ERR_OK) return error;
+  return send_connect_data(ep, local_segment_data);
+}  
+
+
+
+static dpa_error_t send_msg_accept_data(dpa_fid_ep* ep) {
+  segment_data local_segment_data = {
+    .nodeId = localNodeId,
+  };
+  dpa_error_t error;
+  DPACreateDataInterrupt(ep->msg_send_info.sd, &ep->connect_interrupt,
+                         localAdapterNo, &local_segment_data.acceptIntId,
+                         NULL, NULL, DPA_FLAG_EMPTY, &error);
+  DPALIB_CHECK_ERROR(DPACreateDataInterrupt, return error);
+  return alloc_send_buffer(ep, &local_segment_data);
 }
   
-
-void remove_msg_accept_data(dpa_fid_ep* ep, volatile control_data* data){
-  memset((void*)data, 0, sizeof(control_data));
-}
-
 dpa_error_t accept_msg(dpa_fid_ep* ep) { 
   DPA_DEBUG("Accepting connection from endpoint %d:%d\n", ep->peer_addr.nodeId, ep->peer_addr.segmentId);
-  volatile control_data* control_data = write_msg_accept_data(ep);
-  if (!control_data)
-    return -FI_ENOSPC;
-  print_control_data(control_data);
-  // wait until remote writes its data
-  while(!control_data->remote_segment_data.size);
-  print_control_data(control_data);
-  dpa_error_t error = connect_msg(ep, control_data->remote_segment_data);
-  remove_msg_accept_data(ep, control_data);
+  dpa_error_t error = send_msg_accept_data(ep);
+  DPALIB_CHECK_ERROR(send_msg_accept_data, return -FI_ECONNABORTED);
+  error = connect_msg(ep, ep->connect_data);
   return error == DPA_ERR_OK ? FI_SUCCESS : -FI_ECONNABORTED;
 }
 
-static inline volatile control_data* get_conn_data(volatile control_data arr[],
-                                                   size_t count) {
-  for(;;) {
-    for (int i = 0; i < count; i++) {
-      if (arr[i].nodeId == localNodeId && arr[i].status == CTRLSTATUS_VALID)
-        return &arr[i];
-    }
-  }
-}
-
-dpa_error_t ctrl_connect_msg(dpa_fid_ep* ep, volatile segment_data* remote_segment_data) {
-  dpa_error_t error, nocheck;
-  dpa_remote_segment_t remoteControlSegment;
-  dpa_desc_t sd;
-  DPA_DEBUG("Opening new virtual device\n");
-  DPAOpen(&sd, NO_FLAGS, &error);
-  DPALIB_CHECK_ERROR(DPAOpen, goto ctrl_end);
-  
-  DPA_DEBUG("Connecting to remote control segment %d on node %d\n",
-            ep->peer_addr.segmentId, ep->peer_addr.nodeId);
-  do {
-    DPAConnectSegment(sd, &remoteControlSegment, ep->peer_addr.nodeId,
-                      ep->peer_addr.segmentId, localAdapterNo, NO_CALLBACK,
-                      NULL, DPA_INFINITE_TIMEOUT, NO_FLAGS, &error);
-  } while (error != DPA_ERR_OK);
-
-  size_t ctrl_seg_size = DPAGetRemoteSegmentSize(remoteControlSegment);
-  
-  DPA_DEBUG("Mapping remote control segment\n");
-  dpa_map_t remoteControlMap;
-  volatile control_data* remote_ctrl_segment = DPAMapRemoteSegment(remoteControlSegment,
-                                                                   &remoteControlMap,
-                                                                   0, ctrl_seg_size,
-                                                                   NULL, NO_FLAGS, &error);
-  DPALIB_CHECK_ERROR(DPAMapRemoteSegment, goto ctrl_disconnect);
-
-  dpa_sequence_t sequence = create_start_sequence(remoteControlMap);
-  
-  DPA_DEBUG("Looking for current node segment data on remote\n");
-  size_t count = ctrl_seg_size / sizeof(control_data);
-  volatile control_data* control_data = get_conn_data(remote_ctrl_segment, count);
-  //this should be done atomically with a test&set operation, when hardware will support.
-  control_data->status = CTRLSTATUS_TAKEN;
-  dpa_barrier(sequence);
-  
-  DPA_DEBUG("Fetching remote segment data for current node\n");
-  *remote_segment_data = control_data->local_segment_data;
-  error = alloc_msg_buffer(ep, &control_data->remote_segment_data);
-  control_data->status = CTRLSTATUS_REPLIED;
-  dpa_barrier(sequence);
-  print_control_data(control_data);
-
-  remove_sequence(sequence);
- ctrl_unmap:
-  DPAUnmapSegment(remoteControlMap, NO_FLAGS, &nocheck);
- ctrl_disconnect:
-  DPADisconnectSegment(remoteControlSegment, NO_FLAGS, &nocheck);
- ctrl_close:
-  DPAClose(sd, NO_FLAGS, &nocheck);
- ctrl_end:
-  return error;
+dpa_error_t ctrl_connect_msg(dpa_fid_ep* ep) {
+  segment_data local_segment_data = {
+    .nodeId = localNodeId,
+  };
+  dpa_error_t error;
+  DPACreateDataInterrupt(ep->msg_send_info.sd, &ep->connect_interrupt,
+                         localAdapterNo, &local_segment_data.acceptIntId,
+                         NULL, NULL, DPA_FLAG_EMPTY, &error);
+  DPALIB_CHECK_ERROR(DPACreateDataInterrupt, return error);
+  return send_connect_data(ep, &local_segment_data);
 }
 
 dpa_error_t connect_msg(dpa_fid_ep* ep, segment_data remote_segment_data) {

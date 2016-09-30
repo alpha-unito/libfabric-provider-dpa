@@ -52,22 +52,25 @@ extern struct assign_data assign_data;
 extern msg_local_segment_info* local_segments_info;
 extern slist free_msg_queue_entries;
 
-int progress_eq(dpa_fid_pep *pep, int timeout_millis);
+static int progress_pep_eq(dpa_fid_pep *pep, int timeout_millis);
+static int progress_ep_eq(dpa_fid_ep *ep, int timeout_millis);
 
 int dpa_listen(struct fid_pep *pep) {
   dpa_fid_pep* pep_priv = container_of(pep, dpa_fid_pep, pep);
   if (!pep_priv->eq) return -FI_ENOEQ;
-  DPA_DEBUG("Listening on segment %d\n", pep_priv->control_info.segmentId);
-  dpa_error_t error =
-    dpa_alloc_segment(&pep_priv->control_info, pep_priv->control_info.segmentId,
-                      CONTROL_SEGMENT_SIZE, zero_segment_initializer,
-                      NULL, NULL);
-  pep_priv->eq->progress.func = (progress_queue_t) progress_eq;
-  pep_priv->eq->progress.arg = pep_priv;
+  DPA_DEBUG("Listening on interrupt %d\n", pep_priv->control_info.segmentId);
+
+  dpa_error_t error;
+  DPACreateDataInterrupt(pep_priv->sd, &pep_priv->interrupt,
+                         localAdapterNo, &pep_priv->interruptId,
+                         NULL, NULL, DPA_FLAG_FIXED_INTNO, &error);
+  DPALIB_CHECK_ERROR(DPACreateDataInterrupt,);
   if (error == DPA_ERR_SEGMENTID_USED)
     return -FI_EADDRINUSE;
   else if (error != DPA_ERR_OK)
     return -FI_EOTHER;
+  pep_priv->eq->progress.func = (progress_queue_t) progress_pep_eq;
+  pep_priv->eq->progress.arg = pep_priv;
   
   return FI_SUCCESS;
 }
@@ -75,21 +78,24 @@ int dpa_listen(struct fid_pep *pep) {
 
 int dpa_accept(struct fid_ep *ep, const void *param, size_t paramlen) {
   dpa_fid_ep* ep_priv = container_of(ep, dpa_fid_ep, ep);
-  return accept_msg(ep_priv);
+  if (accept_msg(ep_priv) != DPA_ERR_OK) return -FI_ECONNABORTED;
+  
+  ep_priv->eq->progress.func = (progress_queue_t) progress_ep_eq;
+  ep_priv->eq->progress.arg = ep_priv;
+  return FI_SUCCESS;
 }
 
 int dpa_connect(struct fid_ep *ep, const void *addr,
                 const void *param, size_t paramlen) {
   dpa_fid_ep* ep_priv = container_of(ep, dpa_fid_ep, ep);
-  DPA_DEBUG("Connecting to endpoint %d:%d\n", ep_priv->peer_addr.nodeId, ep_priv->peer_addr.segmentId);
-  segment_data remote_segment_data;
-  dpa_error_t error = ctrl_connect_msg(ep_priv, &remote_segment_data);
+  if (!ep_priv->eq) return -FI_ENOEQ;
+
+  DPA_DEBUG("Connecting to endpoint %d:%d\n", ep_priv->peer_addr.nodeId, ep_priv->peer_addr.connectId);
+  dpa_error_t error = ctrl_connect_msg(ep_priv);
   if (error != DPA_ERR_OK) return -FI_ECONNABORTED;
-  error = connect_msg(ep_priv, remote_segment_data);
-  if (error != DPA_ERR_OK) {
-    disconnect_msg(ep_priv);
-    return -FI_ECONNABORTED;
-  }
+  
+  ep_priv->eq->progress.func = (progress_queue_t) progress_ep_eq;
+  ep_priv->eq->progress.arg = ep_priv;
   return FI_SUCCESS;
 }
 
@@ -130,32 +136,60 @@ int dpa_cm_fini() {
   return FI_SUCCESS;
 }
       
-static inline void connection_request(dpa_fid_pep* pep, dpa_nodeid_t nodeId) {
+static inline void connection_request(dpa_fid_pep* pep, segment_data remote_segment_data) {
   const struct fi_eq_cm_entry event = {
     .fid = &pep->pep.fid,
     .info = fi_dupinfo(pep->info),
   };
   event.info->dest_addr = ALLOC_INIT(dpa_addr_t, {
-      .nodeId = nodeId,
-      .segmentId = 0,
-    });
+      .nodeId = remote_segment_data.nodeId,
+      .connectId = remote_segment_data.acceptIntId,
+  });
   event.info->dest_addrlen = sizeof(dpa_addr_t);
   event.info->handle = &pep->pep.fid;
   eq_add(pep->eq, FI_CONNREQ, &event, sizeof(event), NO_FLAGS, 0);
 }
 
-int progress_eq(dpa_fid_pep *pep, int timeout_millis) {
-  dpa_nodeid_t nodeId; dpa_adapterno_t adapterNo; dpa_error_t error;
-  DPA_DEBUG("Awaiting connection on segment %d\n", pep->control_info.segmentId);
+static inline dpa_error_t progress_eq(dpa_local_data_interrupt_t interrupt,
+                                       segment_data* remote_segment_data, int timeout_millis) {
+  dpa_error_t error;
+  DPA_DEBUG("Awaiting connection data on interrupt %d\n", interruptId);
   timeout_millis = timeout_millis >= 0 ? timeout_millis : DPA_INFINITE_TIMEOUT;
-  while(DPA_CB_CONNECT != DPAWaitForLocalSegmentEvent(pep->control_info.segment,
-                                                      &nodeId, &adapterNo,
-                                                      timeout_millis,
-                                                      NO_FLAGS, &error)) {
-    // avoid logging errors for timeout
-    if (error == DPA_ERR_TIMEOUT) return 0;
-    DPALIB_CHECK_ERROR(DPAWaitForLocalSegmentEvent, return 0);
-  }
-  connection_request(pep, nodeId);
+  unsigned int length;
+  DPAWaitForDataInterrupt(interrupt, remote_segment_data, &length,
+                          timeout_millis, DPA_FLAG_EMPTY, &error);
+  DPALIB_CHECK_ERROR(DPAWaitForDataInterrupt, return error);
+  return DPA_ERR_OK;
+}
+
+
+static int progress_pep_eq(dpa_fid_pep* pep, int timeout_millis) {
+  segment_data remote_segment_data;
+  dpa_error_t error = progress_eq(pep->interrupt, &remote_segment_data, timeout_millis);
+  if (error == DPA_ERR_TIMEOUT) return 0;
+  connection_request(pep, remote_segment_data);
   return timeout_millis;
 }
+
+static int progress_ep_eq(dpa_fid_ep* ep, int timeout_millis) {
+  segment_data segment_data;
+  dpa_error_t error = progress_eq(ep->connect_interrupt,
+                                  &segment_data, timeout_millis);
+  if (error == DPA_ERR_TIMEOUT) return 0;
+
+  // on the passive side, buffer gets created on accept
+  if (!ep->msg_recv_info.buffer) {
+    alloc_send_buffer(ep, &segment_data);
+  }
+  DPARemoveDataInterrupt(ep->connect_interrupt, DPA_FLAG_EMPTY, &error);
+  //error here should not happen and is not fatal (communication can continue)
+  DPALIB_CHECK_ERROR(DPARemoveDataInterrupt,);
+
+  error = connect_msg(ep, segment_data);
+  if (error != DPA_ERR_OK) {
+    disconnect_msg(ep);
+    return 0;
+  }
+  return timeout_millis;
+}
+  

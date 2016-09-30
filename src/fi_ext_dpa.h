@@ -46,7 +46,7 @@ typedef unsigned int dpa_adapterno_t;
 
 struct dpa_addr_t {
   dpa_nodeid_t nodeId;
-  dpa_segmid_t segmentId;
+  dpa_intid_t connectId;
 };
 
 #define FI_DPA_CQ_OPS_OPEN "FI_DPA_CQ_OPS_OPEN"

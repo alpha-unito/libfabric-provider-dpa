@@ -57,14 +57,14 @@ void cache_disconnect(remote_mr_cache* cache) {
     DPALIB_CHECK_ERROR(DPAClose, );
     cache->sd = NULL;
   }
-  cache->target.nodeId = cache->target.segmentId = 0;
+  cache->target.nodeId = cache->target.connectId = 0;
   cache->base = NULL;
   cache->len = 0;
 }
 
 dpa_error_t cache_connect(dpa_fid_ep* ep, dpa_addr_t target) {
   if (target.nodeId == ep->last_remote_mr.target.nodeId &&
-      target.segmentId == ep->last_remote_mr.target.segmentId &&
+      target.connectId == ep->last_remote_mr.target.connectId &&
       ep->last_remote_mr.base)
     return DPA_ERR_OK;
 
@@ -78,7 +78,7 @@ dpa_error_t cache_connect(dpa_fid_ep* ep, dpa_addr_t target) {
   DPALIB_CHECK_ERROR(DPAOpen, goto cache_connect_end);
 
   DPAConnectSegment(ep->last_remote_mr.sd, &ep->last_remote_mr.segment,
-                    target.nodeId, target.segmentId, localAdapterNo,
+                    target.nodeId, target.connectId, localAdapterNo,
                     NULL, NULL, DPA_INFINITE_TIMEOUT, NO_FLAGS, &error);
   DPALIB_CHECK_ERROR(DPAConnectSegment, goto cache_connect_end);
 
@@ -142,8 +142,8 @@ ssize_t acquire_target(dpa_fid_ep* ep, const struct fi_msg_rma* msg, dpa_addr_t*
     size_t addrlen = sizeof(dpa_addr_t);
     dpa_av_lookup(&ep->av->av, msg->addr, target, &addrlen);
   }
-  target->segmentId = (dpa_segmid_t) msg->rma_iov[0].key;
-  if (target->segmentId != msg->rma_iov[0].key)
+  target->connectId = (dpa_intid_t) msg->rma_iov[0].key;
+  if (target->connectId != msg->rma_iov[0].key)
     return -FI_EINVAL; //truncation occurred, invalid
 
   if (cache_connect(ep, *target) != DPA_ERR_OK) return -FI_EREMOTEIO;
