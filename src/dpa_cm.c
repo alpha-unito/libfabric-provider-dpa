@@ -60,13 +60,9 @@ int dpa_listen(struct fid_pep *pep) {
   if (!pep_priv->eq) return -FI_ENOEQ;
   DPA_DEBUG("Listening on interrupt %d\n", pep_priv->control_info.segmentId);
 
-  dpa_error_t error;
-  DPAOpen(&pep_priv->sd, DPA_FLAG_EMPTY, &error);
-  DPALIB_CHECK_ERROR(DPAOpen, return -FI_EOTHER);
-  DPACreateDataInterrupt(pep_priv->sd, &pep_priv->interrupt,
-                         localAdapterNo, &pep_priv->interruptId,
-                         NULL, NULL, DPA_FLAG_FIXED_INTNO, &error);
-  DPALIB_CHECK_ERROR(DPACreateDataInterrupt,);
+  dpa_error_t error = create_data_interrupt(&pep_priv->sd, &pep_priv->interrupt,
+                                            &pep_priv->interruptId, DPA_FLAG_FIXED_INTNO);
+  DPALIB_CHECK_ERROR(create_data_interrupt,);
   if (error == DPA_ERR_SEGMENTID_USED)
     return -FI_EADDRINUSE;
   else if (error != DPA_ERR_OK)

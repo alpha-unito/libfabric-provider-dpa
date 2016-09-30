@@ -218,11 +218,9 @@ static dpa_error_t send_msg_accept_data(dpa_fid_ep* ep) {
   segment_data local_segment_data = {
     .nodeId = localNodeId,
   };
-  dpa_error_t error;
-  DPACreateDataInterrupt(ep->msg_send_info.sd, &ep->connect_interrupt,
-                         localAdapterNo, &local_segment_data.acceptIntId,
-                         NULL, NULL, DPA_FLAG_EMPTY, &error);
-  DPALIB_CHECK_ERROR(DPACreateDataInterrupt, return error);
+  dpa_error_t error = create_data_interrupt(&ep->connect_sd, &ep->connect_interrupt,
+                                            &ep->connect_data.acceptIntId, DPA_FLAG_FIXED_INTNO);
+  DPALIB_CHECK_ERROR(create_data_interrupt, return error);
   return alloc_send_buffer(ep, &local_segment_data);
 }
   
@@ -238,11 +236,9 @@ dpa_error_t ctrl_connect_msg(dpa_fid_ep* ep) {
   segment_data local_segment_data = {
     .nodeId = localNodeId,
   };
-  dpa_error_t error;
-  DPACreateDataInterrupt(ep->msg_send_info.sd, &ep->connect_interrupt,
-                         localAdapterNo, &local_segment_data.acceptIntId,
-                         NULL, NULL, DPA_FLAG_EMPTY, &error);
-  DPALIB_CHECK_ERROR(DPACreateDataInterrupt, return error);
+  dpa_error_t error = create_data_interrupt(&ep->connect_sd, &ep->connect_interrupt,
+                                            &ep->connect_data.acceptIntId, DPA_FLAG_FIXED_INTNO);
+  DPALIB_CHECK_ERROR(create_data_interrupt, return error);
   return send_connect_data(ep, &local_segment_data);
 }
 

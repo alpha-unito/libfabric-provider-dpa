@@ -91,6 +91,7 @@ struct dpa_fid_ep {
   remote_mr_cache last_remote_mr;
   dpa_addr_t peer_addr;
   segment_data connect_data;
+  dpa_desc_t connect_sd;
   dpa_local_data_interrupt_t connect_interrupt;
   uint8_t connected;
   uint8_t lock_needed;

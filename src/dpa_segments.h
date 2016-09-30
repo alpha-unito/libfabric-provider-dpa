@@ -123,6 +123,17 @@ static inline dpa_sequence_t create_start_sequence(dpa_map_t map) {
   return sequence;
 }
 
+static inline dpa_error_t create_data_interrupt(dpa_desc_t* sd, dpa_local_data_interrupt_t* interrupt,
+                                         dpa_intid_t* interruptId, unsigned int flags) {
+  dpa_error_t error;
+  DPAOpen(sd, DPA_FLAG_EMPTY, &error);
+  DPALIB_CHECK_ERROR(DPAOpen, return error);
+  DPACreateDataInterrupt(*sd, interrupt, localAdapterNo, interruptId,
+                         NULL, NULL, flags, &error);
+  DPALIB_CHECK_ERROR(DPACreateDataInterrupt, return error);
+  return DPA_ERR_OK;
+}
+
 static inline void dpa_barrier(dpa_sequence_t sequence) {
   if (!sequence) return;
   DPAFlush(sequence, DPA_FLAG_FLUSH_CPU_BUFFERS_ONLY);
