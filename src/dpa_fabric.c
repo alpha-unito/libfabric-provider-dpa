@@ -61,14 +61,14 @@ FI_EXT_INI{
   //start dpalib
   dpa_error_t error;
   DPA_DEBUG("Initialize DPALIB\n");
-  DPAInitialize(DPA_FLAG_EMPTY, &error);
+  DPAInitialize(NO_FLAGS, &error);
   DPALIB_CHECK_ERROR(DPAInitialize, return NULL);
   
   ENV_OVERRIDE_INT(localAdapterNo);
   DPA_DEBUG("Getting local node id\n");
   DPAGetLocalNodeId(localAdapterNo,
                     &localNodeId,
-                    DPA_FLAG_EMPTY,
+                    NO_FLAGS,
                     &error);
   DPALIB_CHECK_ERROR(DPAGetLocalNodeId, return NULL);
   DPA_DEBUG("Local node id = %d\n", localNodeId);

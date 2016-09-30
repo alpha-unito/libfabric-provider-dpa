@@ -189,20 +189,20 @@ static inline dpa_error_t alloc_msg_buffer(dpa_fid_ep* ep, segment_data* local_s
 static dpa_error_t send_connect_data(dpa_fid_ep* ep, segment_data* local_segment_data) {
   dpa_desc_t sd;
   dpa_error_t error;
-  DPAOpen(&sd, DPA_FLAG_EMPTY, &error);
+  DPAOpen(&sd, NO_FLAGS, &error);
   DPALIB_CHECK_ERROR(DPAOpen, return error);
   dpa_remote_data_interrupt_t interrupt;
   DPAConnectDataInterrupt(sd, &interrupt, ep->peer_addr.nodeId,
                           localAdapterNo, ep->peer_addr.connectId,
-                          DPA_INFINITE_TIMEOUT, DPA_FLAG_EMPTY, &error);
+                          DPA_INFINITE_TIMEOUT, NO_FLAGS, &error);
   DPALIB_CHECK_ERROR(DPAConnectDataInterrupt, goto send_msg_accept_data_closesd);
   DPATriggerDataInterrupt(interrupt, local_segment_data, sizeof(segment_data),
-                          DPA_FLAG_EMPTY, &error);
+                          NO_FLAGS, &error);
   DPALIB_CHECK_ERROR(DPATriggerDataInterrupt, );
 
-  DPADisconnectDataInterrupt(interrupt, DPA_FLAG_EMPTY, &error);
+  DPADisconnectDataInterrupt(interrupt, NO_FLAGS, &error);
  send_msg_accept_data_closesd:
-  DPAClose(sd, DPA_FLAG_EMPTY, &error);
+  DPAClose(sd, NO_FLAGS, &error);
   return error;
 }
 

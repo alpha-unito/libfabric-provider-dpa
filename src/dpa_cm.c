@@ -155,7 +155,7 @@ static inline dpa_error_t progress_eq(dpa_local_data_interrupt_t interrupt,
   timeout_millis = timeout_millis >= 0 ? timeout_millis : DPA_INFINITE_TIMEOUT;
   unsigned int length;
   DPAWaitForDataInterrupt(interrupt, remote_segment_data, &length,
-                          timeout_millis, DPA_FLAG_EMPTY, &error);
+                          timeout_millis, NO_FLAGS, &error);
   DPALIB_CHECK_ERROR(DPAWaitForDataInterrupt, return error);
   return DPA_ERR_OK;
 }
@@ -179,7 +179,7 @@ static int progress_ep_eq(dpa_fid_ep* ep, int timeout_millis) {
   if (!ep->msg_recv_info.buffer) {
     alloc_send_buffer(ep, &segment_data);
   }
-  DPARemoveDataInterrupt(ep->connect_interrupt, DPA_FLAG_EMPTY, &error);
+  DPARemoveDataInterrupt(ep->connect_interrupt, NO_FLAGS, &error);
   //error here should not happen and is not fatal (communication can continue)
   DPALIB_CHECK_ERROR(DPARemoveDataInterrupt,);
 

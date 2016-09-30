@@ -126,7 +126,7 @@ static inline dpa_sequence_t create_start_sequence(dpa_map_t map) {
 static inline dpa_error_t create_data_interrupt(dpa_desc_t* sd, dpa_local_data_interrupt_t* interrupt,
                                          dpa_intid_t* interruptId, unsigned int flags) {
   dpa_error_t error;
-  DPAOpen(sd, DPA_FLAG_EMPTY, &error);
+  DPAOpen(sd, NO_FLAGS, &error);
   DPALIB_CHECK_ERROR(DPAOpen, return error);
   DPACreateDataInterrupt(*sd, interrupt, localAdapterNo, interruptId,
                          NULL, NULL, flags, &error);

@@ -263,8 +263,8 @@ static int dpa_pep_close(fid_t fid) {
   if (pep->eq)
     queue_progress_init(&pep->eq->progress);
   dpa_error_t error;
-  DPARemoveDataInterrupt(pep->interrupt, DPA_FLAG_EMPTY, &error);
-  DPAClose(pep->sd, DPA_FLAG_EMPTY, &error);
+  DPARemoveDataInterrupt(pep->interrupt, NO_FLAGS, &error);
+  DPAClose(pep->sd, NO_FLAGS, &error);
   fi_freeinfo(pep->info);
   free(pep);
   return 0;
