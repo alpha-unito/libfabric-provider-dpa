@@ -61,6 +61,8 @@ int dpa_listen(struct fid_pep *pep) {
   DPA_DEBUG("Listening on interrupt %d\n", pep_priv->control_info.segmentId);
 
   dpa_error_t error;
+  DPAOpen(&pep_priv->sd, DPA_FLAG_EMPTY, &error);
+  DPALIB_CHECK_ERROR(DPAOpen, return -FI_EOTHER);
   DPACreateDataInterrupt(pep_priv->sd, &pep_priv->interrupt,
                          localAdapterNo, &pep_priv->interruptId,
                          NULL, NULL, DPA_FLAG_FIXED_INTNO, &error);
