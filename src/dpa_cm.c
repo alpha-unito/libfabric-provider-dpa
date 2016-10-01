@@ -153,7 +153,7 @@ static inline dpa_error_t progress_eq(dpa_local_data_interrupt_t interrupt,
   dpa_error_t error;
   DPA_DEBUG("Awaiting connection data on interrupt\n");
   timeout_millis = timeout_millis >= 0 ? timeout_millis : DPA_INFINITE_TIMEOUT;
-  unsigned int length;
+  unsigned int length = sizeof(segment_data);
   DPAWaitForDataInterrupt(interrupt, remote_segment_data, &length,
                           timeout_millis, NO_FLAGS, &error);
   DPALIB_CHECK_ERROR(DPAWaitForDataInterrupt, return error);
