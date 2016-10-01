@@ -178,7 +178,7 @@ dpa_addr_t* resolvename(const char* node, const char *service){
   else
     result->connectId = 0;
   
-  DPA_DEBUG("Resolved nodeId:%d connectId:%d\n", result->nodeId, result->segmentId);
+  DPA_DEBUG("Resolved nodeId:%d connectId:%d\n", result->nodeId, result->connectId);
   return result;
 }
 

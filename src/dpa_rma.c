@@ -73,7 +73,7 @@ dpa_error_t cache_connect(dpa_fid_ep* ep, dpa_addr_t target) {
 
   dpa_error_t error = DPA_ERR_OK;
   DPA_DEBUG("Connecting and mapping segment %u on node %u for RMA\n",
-            target.segmentId, target.nodeId);
+            target.connectId, target.nodeId);
   DPAOpen(&ep->last_remote_mr.sd, NO_FLAGS, &error);
   DPALIB_CHECK_ERROR(DPAOpen, goto cache_connect_end);
 

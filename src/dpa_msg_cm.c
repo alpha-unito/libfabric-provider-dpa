@@ -223,7 +223,7 @@ static dpa_error_t send_msg_accept_data(dpa_fid_ep* ep) {
 }
   
 dpa_error_t accept_msg(dpa_fid_ep* ep) { 
-  DPA_DEBUG("Accepting connection from endpoint %d:%d\n", ep->peer_addr.nodeId, ep->peer_addr.segmentId);
+  DPA_DEBUG("Accepting connection from endpoint %d:%d\n", ep->peer_addr.nodeId, ep->peer_addr.connectId);
   dpa_error_t error = send_msg_accept_data(ep);
   DPALIB_CHECK_ERROR(send_msg_accept_data, return -FI_ECONNABORTED);
   return DPA_ERR_OK;

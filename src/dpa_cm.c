@@ -58,7 +58,7 @@ static int progress_ep_eq(dpa_fid_ep *ep, int timeout_millis);
 int dpa_listen(struct fid_pep *pep) {
   dpa_fid_pep* pep_priv = container_of(pep, dpa_fid_pep, pep);
   if (!pep_priv->eq) return -FI_ENOEQ;
-  DPA_DEBUG("Listening on interrupt %d\n", pep_priv->control_info.segmentId);
+  DPA_DEBUG("Listening on interrupt %d\n", pep_priv->interruptId);
 
   dpa_error_t error = create_data_interrupt(&pep_priv->sd, &pep_priv->interrupt,
                                             &pep_priv->interruptId, DPA_FLAG_FIXED_INTNO);
@@ -149,9 +149,9 @@ static inline void connection_request(dpa_fid_pep* pep, segment_data remote_segm
 }
 
 static inline dpa_error_t progress_eq(dpa_local_data_interrupt_t interrupt,
-                                       segment_data* remote_segment_data, int timeout_millis) {
+                                      segment_data* remote_segment_data, int timeout_millis) {
   dpa_error_t error;
-  DPA_DEBUG("Awaiting connection data on interrupt %d\n", interruptId);
+  DPA_DEBUG("Awaiting connection data on interrupt\n");
   timeout_millis = timeout_millis >= 0 ? timeout_millis : DPA_INFINITE_TIMEOUT;
   unsigned int length;
   DPAWaitForDataInterrupt(interrupt, remote_segment_data, &length,
