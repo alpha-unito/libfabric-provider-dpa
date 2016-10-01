@@ -189,20 +189,27 @@ static inline dpa_error_t alloc_msg_buffer(dpa_fid_ep* ep, segment_data* local_s
 static dpa_error_t send_connect_data(dpa_fid_ep* ep, segment_data* local_segment_data) {
   dpa_desc_t sd;
   dpa_error_t error;
+  dpa_error_t nocheck;
   DPAOpen(&sd, NO_FLAGS, &error);
   DPALIB_CHECK_ERROR(DPAOpen, return error);
   dpa_remote_data_interrupt_t interrupt;
+  DPA_DEBUG("Connecting to remote interrupt %u on node %u\n",
+            ep->peer_addr.connectId, ep->peer_addr.nodeId);
   DPAConnectDataInterrupt(sd, &interrupt, ep->peer_addr.nodeId,
                           localAdapterNo, ep->peer_addr.connectId,
                           DPA_INFINITE_TIMEOUT, NO_FLAGS, &error);
   DPALIB_CHECK_ERROR(DPAConnectDataInterrupt, goto send_msg_accept_data_closesd);
+  DPA_DEBUG("Send segment data to remote interrupt %u on node %u\n",
+            ep->peer_addr.connectId, ep->peer_addr.nodeId);
   DPATriggerDataInterrupt(interrupt, local_segment_data, sizeof(segment_data),
                           NO_FLAGS, &error);
   DPALIB_CHECK_ERROR(DPATriggerDataInterrupt, );
 
+  DPA_DEBUG("Disconnecting from remote interrupt %u on node %u\n",
+            ep->peer_addr.connectId, ep->peer_addr.nodeId);
   DPADisconnectDataInterrupt(interrupt, NO_FLAGS, &error);
  send_msg_accept_data_closesd:
-  DPAClose(sd, NO_FLAGS, &error);
+  DPAClose(sd, NO_FLAGS, &nocheck);
   return error;
 }
 
