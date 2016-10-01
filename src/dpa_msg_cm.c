@@ -241,7 +241,7 @@ dpa_error_t ctrl_connect_msg(dpa_fid_ep* ep) {
     .nodeId = localNodeId,
   };
   dpa_error_t error = create_data_interrupt(&ep->connect_sd, &ep->connect_interrupt,
-                                            &ep->connect_data.acceptIntId, DPA_FLAG_FIXED_INTNO);
+                                            &local_segment_data.acceptIntId, DPA_FLAG_FIXED_INTNO);
   DPALIB_CHECK_ERROR(create_data_interrupt, return error);
   return send_connect_data(ep, &local_segment_data);
 }
