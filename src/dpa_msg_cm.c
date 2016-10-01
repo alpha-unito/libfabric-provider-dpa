@@ -212,8 +212,6 @@ dpa_error_t alloc_send_buffer(dpa_fid_ep* ep, segment_data* local_segment_data) 
   return send_connect_data(ep, local_segment_data);
 }  
 
-
-
 static dpa_error_t send_msg_accept_data(dpa_fid_ep* ep) {
   segment_data local_segment_data = {
     .nodeId = localNodeId,
@@ -228,8 +226,7 @@ dpa_error_t accept_msg(dpa_fid_ep* ep) {
   DPA_DEBUG("Accepting connection from endpoint %d:%d\n", ep->peer_addr.nodeId, ep->peer_addr.segmentId);
   dpa_error_t error = send_msg_accept_data(ep);
   DPALIB_CHECK_ERROR(send_msg_accept_data, return -FI_ECONNABORTED);
-  error = connect_msg(ep, ep->connect_data);
-  return error == DPA_ERR_OK ? FI_SUCCESS : -FI_ECONNABORTED;
+  return DPA_ERR_OK;
 }
 
 dpa_error_t ctrl_connect_msg(dpa_fid_ep* ep) {
