@@ -114,7 +114,7 @@ int dpa_cm_init(){
   THREADSAFE(&assign_data.lock, ({
         assign_data.currentSegmentId = MIN_MSG_SEGMID;
         local_segments_info = array_create(1, msg_local_segment_info);
-      }));
+  }));
   return FI_SUCCESS;
 }
 
@@ -174,7 +174,7 @@ static int progress_ep_eq(dpa_fid_ep* ep, int timeout_millis) {
   dpa_error_t error = progress_eq(ep->connect_interrupt,
                                   &segment_data, timeout_millis);
   if (error == DPA_ERR_TIMEOUT) return 0;
-
+  ep->peer_addr.connectId = segment_data.acceptIntId;
   // on the passive side, buffer gets created on accept
   if (!ep->msg_recv_info.buffer) {
     alloc_send_buffer(ep, &segment_data);
