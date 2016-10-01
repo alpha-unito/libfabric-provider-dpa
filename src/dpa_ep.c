@@ -158,8 +158,11 @@ int dpa_ep_open(struct fid_domain *domain, struct fi_info *info,
           .connectId = 0
         },
         .segment = NULL,
-      }
-    });
+      },
+      .msg_recv_info = {
+        .buffer = NULL,
+      },
+  });
   
   if (can_msg(ep_caps)) {
     struct fi_ops_msg* ops = memdup(&dpa_msg_ops, sizeof(struct fi_ops_msg));
